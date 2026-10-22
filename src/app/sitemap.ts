@@ -4,8 +4,8 @@ import { getPublishedLegalPages, getPublishedMarkets, getPublishedProjects, getS
 export const dynamic = "force-dynamic";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const s = await getSettings();
-  const base = (s.siteUrl || process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000").replace(/\/$/, "");
+  await getSettings();
+  const base = "https://www.mrhomerealestate.com";
   const [projects, markets, legal] = await Promise.all([getPublishedProjects(), getPublishedMarkets(), getPublishedLegalPages()]);
   const now = new Date();
   return [

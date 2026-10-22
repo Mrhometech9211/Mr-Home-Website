@@ -5,9 +5,8 @@ import "./globals.css";
 
 export async function generateMetadata(): Promise<Metadata> {
   const s = await getSettings();
-  const base = s.siteUrl || process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
   return {
-    metadataBase: new URL(base),
+    metadataBase: new URL("https://www.mrhomerealestate.com"),
     title: { default: s.seoDefaultTitle, template: `%s | ${s.brandName}` },
     description: s.seoDefaultDescription,
     icons: { icon: s.favicon },
