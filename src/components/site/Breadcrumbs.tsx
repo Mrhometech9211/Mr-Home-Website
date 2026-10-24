@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { absoluteSiteUrl } from "@/lib/site";
 
 export type Crumb = { name: string; href: string };
 
@@ -8,7 +9,7 @@ export function Breadcrumbs({ items, dark = false, className }: { items: Crumb[]
   const ld = {
     "@context": "https://schema.org",
     "@type": "BreadcrumbList",
-    itemListElement: items.map((c, i) => ({ "@type": "ListItem", position: i + 1, name: c.name, item: c.href })),
+    itemListElement: items.map((c, i) => ({ "@type": "ListItem", position: i + 1, name: c.name, item: absoluteSiteUrl(c.href) })),
   };
   return (
     <nav aria-label="Breadcrumb" className={cn("text-[12.5px]", dark ? "text-white/60" : "text-charcoal/60", className)}>

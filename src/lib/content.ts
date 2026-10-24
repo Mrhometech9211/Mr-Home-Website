@@ -12,6 +12,12 @@ import { AMENITY_GROUPS } from "./amenity-filters";
 export type CityFacet = { name: string; marketId: number | null };
 
 export const getSettings = cache(async (): Promise<SiteSettings> => {
+  // Static pages (`/_not-found`, `/robots.txt`) are rendered during `next build`.
+  // Never let a production build connect to, migrate, or seed the live database;
+  // use defaults for build-time metadata instead. Runtime is unaffected.
+  if (process.env.NEXT_PHASE === "phase-production-build") {
+    return mergeSettings(null);
+  }
   try {
     await initDb();
     await ensureSeeded();
@@ -87,6 +93,19 @@ export const getPublishedMarketCities = cache(async (): Promise<Record<number, s
   const map: Record<number, string[]> = {};
   for (const r of rows) if (r.marketId != null) (map[r.marketId] ??= []).push(r.name);
   return map;
+});
+
+/** Published city pages under a published market — used by the sitemap. */
+export type CityRoute = { marketSlug: string; citySlug: string; updatedAt: Date };
+
+export const getPublishedCityRoutes = cache(async (): Promise<CityRoute[]> => {
+  await initDb();
+  const rows = await db
+    .select({ marketSlug: markets.slug, citySlug: cities.slug, updatedAt: cities.updatedAt })
+    .from(cities)
+    .innerJoin(markets, eq(cities.marketId, markets.id))
+    .where(and(eq(cities.published, true), eq(markets.published, true)));
+  return rows;
 });
 
 /**
@@ -305,6 +324,15 @@ export const getPropertyBySlug = cache(async (slug: string, includeDrafts = fals
   if (!includeDrafts) conds.push(eq(properties.published, true), eq(properties.archived, false));
   const rows = await db.select(propertySelect).from(properties).leftJoin(markets, eq(properties.marketId, markets.id)).where(and(...conds)).limit(1);
   return mapPropertyRows(rows)[0] ?? null;
+});
+
+/** Published, non-archived listing URLs — used by the sitemap without the marketplace page cap. */
+export const getPublishedPropertyRoutes = cache(async (): Promise<{ slug: string; updatedAt: Date }[]> => {
+  await initDb();
+  return db
+    .select({ slug: properties.slug, updatedAt: properties.updatedAt })
+    .from(properties)
+    .where(and(eq(properties.published, true), eq(properties.archived, false)));
 });
 
 export const getPropertyCountsByPurpose = cache(async () => {

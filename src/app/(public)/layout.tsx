@@ -7,6 +7,7 @@ import { SmoothScroll } from "@/components/site/SmoothScroll";
 import { CookieConsent } from "@/components/site/CookieConsent";
 import { WhatsAppFloat } from "@/components/site/WhatsAppFloat";
 import { JsonLd } from "@/components/site/Breadcrumbs";
+import { SITE_URL, absoluteSiteUrl } from "@/lib/site";
 
 export default async function PublicLayout({ children }: { children: ReactNode }) {
   const [settings, headerNav, footerNav, markets, builderPages] = await Promise.all([getSettings(), getNavigation("header"), getNavigation("footer"), getPublishedMarkets(), getBuilderNavPages()]);
@@ -29,7 +30,10 @@ export default async function PublicLayout({ children }: { children: ReactNode }
     telephone: settings.phone,
     email: settings.email,
     address: settings.address,
-    url: settings.siteUrl || undefined,
+    "@id": `${SITE_URL}/#organization`,
+    url: SITE_URL,
+    logo: settings.logo ? absoluteSiteUrl(settings.logo) : undefined,
+    image: settings.seoOgImage ? absoluteSiteUrl(settings.seoOgImage) : undefined,
     sameAs: settings.socialLinks.map((l) => l.url).filter(Boolean),
     areaServed: markets.map((m) => m.name),
   };

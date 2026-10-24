@@ -76,27 +76,37 @@ function splitStatements(sqlText: string): string[] {
  */
 async function statementAlreadyApplied(exec: AppDatabase, stmt: string): Promise<boolean> {
   const q = (name: string) => name.replace(/"/g, "");
+  // Leading SQL comments would defeat the "^CREATE/ALTER" matching below and
+  // make DDL run again on every cold start. Ignore them for the catalog check.
+  const normalized = stmt.replace(/^(?:\s*--[^\n]*(?:\r?\n|$))+/, "").trim();
   let m: RegExpMatchArray | null;
 
   // CREATE TABLE "x" (…)
-  if ((m = stmt.match(/^CREATE TABLE (?:IF NOT EXISTS )?"([^"]+)"/i))) {
+  if ((m = normalized.match(/^CREATE TABLE (?:IF NOT EXISTS )?"([^"]+)"/i))) {
     const res = await exec.execute(sql.raw(`SELECT to_regclass('${q(m[1])}') IS NOT NULL AS ok`));
     return Boolean((res.rows[0] as { ok: boolean } | undefined)?.ok);
   }
   // CREATE [UNIQUE] INDEX "idx" ON …
-  if ((m = stmt.match(/^CREATE (?:UNIQUE )?INDEX (?:IF NOT EXISTS )?"([^"]+)"/i))) {
+  if ((m = normalized.match(/^CREATE (?:UNIQUE )?INDEX (?:IF NOT EXISTS )?"([^"]+)"/i))) {
     const res = await exec.execute(sql.raw(`SELECT 1 FROM pg_indexes WHERE indexname = '${q(m[1])}' LIMIT 1`));
     return res.rows.length > 0;
   }
   // ALTER TABLE "x" ADD COLUMN "c" …
-  if ((m = stmt.match(/^ALTER TABLE "([^"]+)" ADD COLUMN (?:IF NOT EXISTS )?"([^"]+)"/i))) {
+  if ((m = normalized.match(/^ALTER TABLE "([^"]+)" ADD COLUMN (?:IF NOT EXISTS )?"([^"]+)"/i))) {
     const res = await exec.execute(
       sql.raw(`SELECT 1 FROM information_schema.columns WHERE table_name = '${q(m[1])}' AND column_name = '${q(m[2])}' LIMIT 1`),
     );
     return res.rows.length > 0;
   }
+  // ALTER TABLE "x" ALTER COLUMN "c" DROP NOT NULL
+  if ((m = normalized.match(/^ALTER TABLE "([^"]+)" ALTER COLUMN "([^"]+)" DROP NOT NULL/i))) {
+    const res = await exec.execute(
+      sql.raw(`SELECT is_nullable FROM information_schema.columns WHERE table_name = '${q(m[1])}' AND column_name = '${q(m[2])}' LIMIT 1`),
+    );
+    return (res.rows[0] as { is_nullable?: string } | undefined)?.is_nullable === "YES";
+  }
   // ALTER TABLE "x" ADD CONSTRAINT "k" …
-  if ((m = stmt.match(/^ALTER TABLE "([^"]+)" ADD CONSTRAINT "([^"]+)"/i))) {
+  if ((m = normalized.match(/^ALTER TABLE "([^"]+)" ADD CONSTRAINT "([^"]+)"/i))) {
     const res = await exec.execute(
       sql.raw(`SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = '${q(m[2])}' LIMIT 1`),
     );

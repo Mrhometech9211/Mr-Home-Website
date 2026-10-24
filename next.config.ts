@@ -16,6 +16,12 @@ const nextConfig: NextConfig = {
     proxyClientMaxBodySize: "64mb",
   },
   serverExternalPackages: ["pg", "@electric-sql/pglite", "pg-cloudflare"],
+  // The DB layer applies ./drizzle/*.sql at runtime. Force those files into
+  // every traced server function so a deploy never starts with an empty
+  // migration directory (which would silently skip new tables/columns).
+  outputFileTracingIncludes: {
+    "/**": ["./drizzle/**/*.sql"],
+  },
   async headers() {
     return [
       {

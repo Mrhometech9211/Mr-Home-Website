@@ -195,7 +195,7 @@ export function SettingsForm({ canWrite }: { canWrite: boolean }) {
           <Rows {...{ s, set, canWrite }} k="footerLinks" label="Legal / footer links" cols={[{ key: "label", label: "Label" }, { key: "href", label: "URL" }]} />
         </>)}
         {tab === "seo" && (<>
-          <Text {...textProps} k="siteUrl" label="Canonical site URL" help="e.g. https://mrhome.com — used for sitemap and Open Graph." />
+          <Text {...textProps} k="siteUrl" label="Canonical site URL (reference only)" help="Canonical, Open Graph and sitemap URLs are always emitted as https://www.mrhomerealestate.com so previews and legacy domains cannot leak into search results." />
           <Text {...textProps} k="seoDefaultTitle" label="Default title" /><Area {...textProps} k="seoDefaultDescription" label="Default description" />
           <div><label className={labelCls}>Default Open Graph image</label><ImageInput value={s.seoOgImage} onChange={(v) => set("seoOgImage", v)} /></div>
           <div className="grid gap-4 md:grid-cols-2"><Text {...textProps} k="gaId" label="Google Analytics ID" help="Loaded only after cookie consent." /><Text {...textProps} k="metaPixelId" label="Meta Pixel ID" /></div>

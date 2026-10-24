@@ -6,12 +6,14 @@ import { BedDouble, Bath, Maximize, MapPin, Building2, KeyRound, Sofa, CalendarC
 import { getPropertyBySlug, getPublishedMarkets, getPublishedProperties, getSettings } from "@/lib/content";
 import { getCurrentUser } from "@/lib/auth";
 import { buildMetadata } from "@/lib/seo";
+import { absoluteSiteUrl } from "@/lib/site";
 import { buildWhatsAppLink, fillTemplate } from "@/lib/whatsapp";
 import { formatPrice } from "@/lib/utils";
 import { Breadcrumbs, JsonLd } from "@/components/site/Breadcrumbs";
 import { Button3D } from "@/components/ui/Button3D";
 import { Reveal } from "@/components/site/Reveal";
-import { PropertyCard, formatArea } from "@/components/marketplace/PropertyCard";
+import { PropertyCard } from "@/components/marketplace/PropertyCard";
+import { formatArea } from "@/lib/area";
 import { InquiryForm } from "@/components/site/InquiryForm";
 import { Gallery } from "@/app/(public)/projects/[slug]/Gallery";
 
@@ -56,8 +58,8 @@ export default async function PropertyPage({ params }: { params: Params }) {
     "@type": "RealEstateListing",
     name: property.title,
     description: property.shortDescription || property.description || undefined,
-    image: property.coverImage,
-    url: `/properties/${property.slug}`,
+    image: property.coverImage ? absoluteSiteUrl(property.coverImage) : undefined,
+    url: absoluteSiteUrl(`/properties/${property.slug}`),
     address: { "@type": "PostalAddress", streetAddress: property.address, addressLocality: property.city, addressCountry: property.country },
     offer: property.price ? { "@type": "Offer", price: property.price, priceCurrency: property.currency, availability: "https://schema.org/InStock" } : undefined,
     numberOfRooms: property.bedrooms ?? undefined,

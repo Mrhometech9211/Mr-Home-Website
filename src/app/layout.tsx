@@ -1,16 +1,17 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { getSettings } from "@/lib/content";
+import { SITE_URL, absoluteSiteUrl } from "@/lib/site";
 import "./globals.css";
 
 export async function generateMetadata(): Promise<Metadata> {
   const s = await getSettings();
   return {
-    metadataBase: new URL("https://www.mrhomerealestate.com"),
+    metadataBase: new URL(SITE_URL),
     title: { default: s.seoDefaultTitle, template: `%s | ${s.brandName}` },
     description: s.seoDefaultDescription,
     icons: { icon: s.favicon },
-    openGraph: { siteName: s.brandName, type: "website", images: [{ url: s.seoOgImage }] },
+    openGraph: { siteName: s.brandName, type: "website", images: s.seoOgImage ? [{ url: absoluteSiteUrl(s.seoOgImage) }] : undefined },
     twitter: { card: "summary_large_image" },
   };
 }

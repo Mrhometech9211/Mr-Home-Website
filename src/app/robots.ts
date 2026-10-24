@@ -1,13 +1,12 @@
 import type { MetadataRoute } from "next";
-import { getSettings } from "@/lib/content";
+import { SITE_URL } from "@/lib/site";
 
-export const dynamic = "force-dynamic";
+export const dynamic = "force-static";
 
-export default async function robots(): Promise<MetadataRoute.Robots> {
-  await getSettings();
-  const base = "https://www.mrhomerealestate.com";
+export default function robots(): MetadataRoute.Robots {
   return {
     rules: [{ userAgent: "*", allow: "/", disallow: ["/admin", "/api/", "/admin/", "/preview"] }],
-    sitemap: `${base}/sitemap.xml`,
+    sitemap: `${SITE_URL}/sitemap.xml`,
+    host: SITE_URL,
   };
 }

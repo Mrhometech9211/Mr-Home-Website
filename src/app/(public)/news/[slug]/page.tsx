@@ -4,6 +4,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getNewsArticleBySlug, getPublishedNews } from "@/lib/content";
 import { buildMetadata } from "@/lib/seo";
+import { SITE_URL, absoluteSiteUrl } from "@/lib/site";
 import { PageHero } from "@/components/site/PageHero";
 import { Markdown } from "@/components/site/Markdown";
 import { formatDateTime } from "@/lib/utils";
@@ -11,8 +12,6 @@ import { formatDateTime } from "@/lib/utils";
 export const dynamic = "force-dynamic";
 
 type Ctx = { params: Promise<{ slug: string }> };
-
-const SITE = "https://www.mrhomerealestate.com";
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
@@ -40,16 +39,16 @@ export default async function NewsArticlePage({ params }: { params: Promise<{ sl
     "@type": "NewsArticle",
     headline: article.title,
     description: article.excerpt || article.seoDescription || undefined,
-    image: article.coverImage ? [article.coverImage.startsWith("http") ? article.coverImage : `${SITE}${article.coverImage}`] : undefined,
+    image: article.coverImage ? [absoluteSiteUrl(article.coverImage)] : undefined,
     datePublished: publishedISO,
     dateModified: article.updatedAt.toISOString(),
     author: article.author ? { "@type": "Organization", name: article.author } : undefined,
     publisher: {
       "@type": "Organization",
       name: "MR.HOME Real Estate",
-      url: SITE,
+      url: SITE_URL,
     },
-    mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE}/news/${article.slug}` },
+    mainEntityOfPage: { "@type": "WebPage", "@id": absoluteSiteUrl(`/news/${article.slug}`) },
     articleSection: article.category || undefined,
     keywords: article.seoKeywords || undefined,
   };
@@ -63,9 +62,9 @@ export default async function NewsArticlePage({ params }: { params: Promise<{ sl
               "@context": "https://schema.org",
               "@type": "BreadcrumbList",
               itemListElement: [
-                { "@type": "ListItem", position: 1, name: "Home", item: `${SITE}/` },
-                { "@type": "ListItem", position: 2, name: "News", item: `${SITE}/news` },
-                { "@type": "ListItem", position: 3, name: article.title, item: `${SITE}/news/${article.slug}` },
+                { "@type": "ListItem", position: 1, name: "Home", item: absoluteSiteUrl("/") },
+                { "@type": "ListItem", position: 2, name: "News", item: absoluteSiteUrl("/news") },
+                { "@type": "ListItem", position: 3, name: article.title, item: absoluteSiteUrl(`/news/${article.slug}`) },
               ],          }),
         }}
       />

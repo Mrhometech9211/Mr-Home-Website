@@ -8,6 +8,7 @@ import { BrochureGate } from "@/components/site/BrochureGate";
 import { ProjectPricing } from "@/components/site/ProjectPricing";
 import { getCurrentUser } from "@/lib/auth";
 import { buildMetadata } from "@/lib/seo";
+import { absoluteSiteUrl } from "@/lib/site";
 import { buildWhatsAppLink, fillTemplate } from "@/lib/whatsapp";
 import { formatProjectArea, STATUS_LABELS } from "@/lib/utils";
 import { Breadcrumbs, JsonLd } from "@/components/site/Breadcrumbs";
@@ -55,7 +56,8 @@ export default async function ProjectPage({ params }: { params: Params }) {
     "@type": "Residence",
     name: project.name,
     description: project.shortDescription || project.description,
-    image: project.coverImage,
+    image: project.coverImage ? absoluteSiteUrl(project.coverImage) : undefined,
+    url: absoluteSiteUrl(`/projects/${project.slug}`),
     address: { "@type": "PostalAddress", streetAddress: project.address, addressLocality: project.city, addressCountry: project.country },
     geo: project.latitude && project.longitude ? { "@type": "GeoCoordinates", latitude: project.latitude, longitude: project.longitude } : undefined,
     offers: project.price ? { "@type": "Offer", price: project.price, priceCurrency: project.currency } : undefined,
