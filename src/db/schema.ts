@@ -10,6 +10,7 @@ import {
   numeric,
   index,
   customType,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 
 export const bytea = customType<{ data: Buffer; notNull: false; default: false }>({
@@ -18,8 +19,26 @@ export const bytea = customType<{ data: Buffer; notNull: false; default: false }
   },
 });
 
-export type Role = "SUPER_ADMIN" | "ADMIN" | "EDITOR";
+export type Role = "SUPER_ADMIN" | "ADMIN" | "EDITOR" | "CUSTOM";
 export type LeadStatus = "NEW" | "CONTACTED" | "QUALIFIED" | "CONVERTED" | "LOST" | "ARCHIVED";
+export type PropertyPurpose = "sale" | "rent";
+export type NewsStatus = "draft" | "published" | "archived";
+
+/**
+ * Custom roles (Phase 6). `permissions` is an array of permission strings
+ * (subset of src/lib/permissions.ts PERMISSIONS). System roles stay hardcoded;
+ * installed/custom rows are additive and never replace SUPER_ADMIN/ADMIN/EDITOR.
+ */
+export const customRoles = pgTable("custom_roles", {
+  id: serial("id").primaryKey(),
+  key: text("key").notNull().unique(),
+  name: text("name").notNull(),
+  description: text("description"),
+  permissions: jsonb("permissions").$type<string[]>().notNull().default([]),
+  builtin: boolean("builtin").notNull().default(false),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
 
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
@@ -27,6 +46,7 @@ export const users = pgTable("users", {
   name: text("name").notNull(),
   passwordHash: text("password_hash").notNull(),
   role: text("role").$type<Role>().notNull().default("EDITOR"),
+  customRoleId: integer("custom_role_id").references(() => customRoles.id, { onDelete: "set null" }),
   active: boolean("active").notNull().default(true),
   lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -176,11 +196,17 @@ export const projects = pgTable(
     description: text("description"),
     price: numeric("price"),
     currency: text("currency").default("USD"),
+    /** sale = shown on /buy, rent = shown on /rent (admin "Listing purpose" tag). */
+    purpose: text("purpose").$type<PropertyPurpose>().notNull().default("sale"),
     roi: text("roi"),
     propertyType: text("property_type"),
     bedrooms: text("bedrooms"),
     bathrooms: text("bathrooms"),
+    /** Legacy free-text area kept for rows created before the unit picker. */
     area: text("area"),
+    /** Area entered in the admin unit picker (value + sqft | sqmt | marla | kanal). */
+    areaValue: numeric("area_value"),
+    areaUnit: text("area_unit"),
     handover: text("handover"),
     status: text("status").notNull().default("available"),
     featured: boolean("featured").notNull().default(false),
@@ -203,6 +229,7 @@ export const projects = pgTable(
     index("projects_market_idx").on(t.marketId),
     index("projects_published_idx").on(t.published),
     index("projects_featured_idx").on(t.featured),
+    index("projects_purpose_idx").on(t.purpose),
   ],
 );
 
@@ -231,7 +258,8 @@ export const leads = pgTable(
   {
     id: serial("id").primaryKey(),
     name: text("name").notNull(),
-    email: text("email").notNull(),
+    // Nullable since Phase 4: brochure-download leads supply phone instead.
+    email: text("email"),
     phone: text("phone"),
     whatsapp: text("whatsapp"),
     country: text("country"),
@@ -242,6 +270,8 @@ export const leads = pgTable(
     interest: text("interest"),
     message: text("message"),
     source: text("source").default("website"),
+    /** Structured submission extras (e.g. Property Listing Lead details). */
+    details: jsonb("details").$type<Record<string, unknown>>(),
     page: text("page"),
     campaign: text("campaign"),
     status: text("status").$type<LeadStatus>().notNull().default("NEW"),
@@ -305,6 +335,139 @@ export const legalPages = pgTable("legal_pages", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+/** ------------------------------------------------------------------
+ *  Phase 2 — Buy / Rent marketplace listings.
+ *  Separate from `projects` (developments) on purpose: a project is a
+ *  whole development; a property is an individual unit/knockdown/spare.
+ *  ------------------------------------------------------------------ */
+export const properties = pgTable(
+  "properties",
+  {
+    id: serial("id").primaryKey(),
+    title: text("title").notNull(),
+    slug: text("slug").notNull().unique(),
+    purpose: text("purpose").$type<PropertyPurpose>().notNull().default("sale"), // sale | rent
+    marketId: integer("market_id").references(() => markets.id, { onDelete: "set null" }),
+    country: text("country"),
+    city: text("city"),
+    address: text("address"),
+    propertyType: text("property_type"), // Apartment | Villa | Townhouse | ... (free text, filters built from distinct values)
+    price: numeric("price"),
+    currency: text("currency").notNull().default("USD"),
+    rentPeriod: text("rent_period"), // month | year (rent only)
+    bedrooms: integer("bedrooms"),
+    bathrooms: integer("bathrooms"),
+    areaSqm: numeric("area_sqm"),
+    furnished: text("furnished"), // unfurnished | semi | furnished
+    completion: text("completion"), // ready | offplan (Ready/Off-Plan filter)
+    availability: text("availability"), // free text e.g. "Available now","Jan 2027"
+    shortDescription: text("short_description"),
+    description: text("description"),
+    amenities: jsonb("amenities").$type<string[]>().default([]),
+    featured: boolean("featured").notNull().default(false),
+    published: boolean("published").notNull().default(false),
+    archived: boolean("archived").notNull().default(false),
+    order: integer("order").notNull().default(0),
+    coverImage: text("cover_image"),
+    gallery: jsonb("gallery").$type<string[]>().default([]),
+    seoTitle: text("seo_title"),
+    seoDescription: text("seo_description"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("properties_purpose_idx").on(t.purpose),
+    index("properties_published_idx").on(t.published),
+    index("properties_market_idx").on(t.marketId),
+  ],
+);
+
+/** Phase 5 — News CMS. */
+export const newsArticles = pgTable(
+  "news_articles",
+  {
+    id: serial("id").primaryKey(),
+    slug: text("slug").notNull().unique(),
+    title: text("title").notNull(),
+    excerpt: text("excerpt"),
+    body: text("body").notNull().default(""),
+    category: text("category"),
+    marketId: integer("market_id").references(() => markets.id, { onDelete: "set null" }),
+    country: text("country"),
+    author: text("author"),
+    authorRole: text("author_role"),
+    coverImage: text("cover_image"),
+    coverImageAlt: text("cover_image_alt"),
+    videoUrl: text("video_url"),
+    featured: boolean("featured").notNull().default(false),
+    archived: boolean("archived").notNull().default(false),
+    published: boolean("published").notNull().default(false),
+    publishedAt: timestamp("published_at", { withTimezone: true }),
+    seoTitle: text("seo_title"),
+    seoDescription: text("seo_description"),
+    seoKeywords: text("seo_keywords"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("news_published_idx").on(t.published), index("news_market_idx").on(t.marketId)],
+);
+
+/** Phase 7 — Page builder pages (draft + published snapshots kept separate). */
+export const pages = pgTable("pages", {
+  id: serial("id").primaryKey(),
+  title: text("title").notNull(),
+  slug: text("slug").notNull().unique(),
+  navLabel: text("nav_label"),
+  navOrder: integer("nav_order").notNull().default(0),
+  navVisible: boolean("nav_visible").notNull().default(true),
+  parentId: integer("parent_id").references((): AnyPgColumn => pages.id, { onDelete: "set null" }),
+  status: text("status").$type<"draft" | "published" | "archived">().notNull().default("draft"),
+  draft: jsonb("draft").$type<unknown[]>().notNull().default([]),
+  published: jsonb("published").$type<unknown[]>().notNull().default([]),
+  publishedAt: timestamp("published_at", { withTimezone: true }),
+  seoTitle: text("seo_title"),
+  seoDescription: text("seo_description"),
+  noIndex: boolean("no_index").notNull().default(false),
+  ogImage: text("og_image"),
+  createdBy: integer("created_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const pageRevisions = pgTable(
+  "page_revisions",
+  {
+    id: serial("id").primaryKey(),
+    pageId: integer("page_id").notNull().references(() => pages.id, { onDelete: "cascade" }),
+    userId: integer("user_id"),
+    userName: text("user_name"),
+    headline: text("headline").notNull(),
+    data: jsonb("data").$type<unknown[]>().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("page_revisions_page_idx").on(t.pageId)],
+);
+
+/** Phase 4 — Project brochures (PDF stored in DB like media). */
+export const brochures = pgTable(
+  "brochures",
+  {
+    id: serial("id").primaryKey(),
+    projectId: integer("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+    filename: text("filename").notNull(),
+    originalName: text("original_name").notNull(),
+    mimeType: text("mime_type").notNull().default("application/pdf"),
+    size: integer("size").notNull(),
+    data: bytea("data"),
+    allowDownload: boolean("allow_download").notNull().default(true),
+    downloads: integer("downloads").notNull().default(0),
+    uploadedBy: integer("uploaded_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("brochures_project_idx").on(t.projectId)],
+);
+
 export const faqs = pgTable("faqs", {
   id: serial("id").primaryKey(),
   question: text("question").notNull(),
@@ -356,3 +519,8 @@ export type PageSection = typeof pageSections.$inferSelect;
 export type NavigationItem = typeof navigationItems.$inferSelect;
 export type MediaItem = typeof media.$inferSelect;
 export type LegalPage = typeof legalPages.$inferSelect;
+export type Property = typeof properties.$inferSelect;
+export type NewsArticle = typeof newsArticles.$inferSelect;
+export type BuilderPage = typeof pages.$inferSelect;
+export type CustomRole = typeof customRoles.$inferSelect;
+export type Brochure = typeof brochures.$inferSelect;

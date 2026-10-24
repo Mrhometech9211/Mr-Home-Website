@@ -11,13 +11,14 @@ import { useToast } from "@/components/admin/ui";
 export type KanbanCard = {
   id: number;
   name: string;
-  email: string;
+  email: string | null;
   phone: string | null;
   city: string | null;
   budget: string | null;
   status: string;
   score: number;
   source: string | null;
+  ip: string | null;
   marketName: string | null;
   projectName: string | null;
   createdAt: string;
@@ -28,6 +29,7 @@ const STAGES = [
   { key: "CONTACTED", label: "Contacted", accent: "bg-amber-500" },
   { key: "QUALIFIED", label: "Qualified", accent: "bg-violet-500" },
   { key: "CONVERTED", label: "Converted", accent: "bg-brand" },
+  { key: "CLOSED_DEAL", label: "Closed Deal", accent: "bg-emerald-600" },
   { key: "LOST", label: "Lost", accent: "bg-slate-400" },
 ] as const;
 
@@ -75,10 +77,11 @@ function Card({ card, onDragStart, dragging }: { card: KanbanCard; onDragStart: 
         {card.budget && <span className="rounded-md bg-ivory-deep px-1.5 py-0.5 font-medium">{card.budget}</span>}
         {card.city && <span className="rounded-md bg-ivory-deep px-1.5 py-0.5">{card.city}</span>}
         {card.source && <span className="rounded-md bg-ivory-deep px-1.5 py-0.5">{card.source}</span>}
+        {card.ip && <span className="rounded-md bg-ivory-deep px-1.5 py-0.5 font-mono text-[10.5px]" title="Visitor IP address">{card.ip}</span>}
       </div>
       <div className="mt-2 flex items-center justify-between border-t border-ink/5 pt-2">
         <div className="flex items-center gap-1.5">
-          <a href={`mailto:${card.email}`} aria-label={`Email ${card.name}`} className="rounded-lg p-1.5 text-charcoal/60 hover:bg-brand/10 hover:text-brand"><Mail className="h-3.5 w-3.5" /></a>
+          {card.email && <a href={`mailto:${card.email}`} aria-label={`Email ${card.name}`} className="rounded-lg p-1.5 text-charcoal/60 hover:bg-brand/10 hover:text-brand"><Mail className="h-3.5 w-3.5" /></a>}
           {card.phone && <a href={`tel:${card.phone.replace(/[^+\d]/g, "")}`} aria-label={`Call ${card.name}`} className="rounded-lg p-1.5 text-charcoal/60 hover:bg-brand/10 hover:text-brand"><Phone className="h-3.5 w-3.5" /></a>}
         </div>
         <span className="text-[10.5px] text-mist">{new Date(card.createdAt).toLocaleDateString()}</span>
@@ -135,11 +138,26 @@ export function KanbanBoard({ cards, canWrite }: { cards: KanbanCard[]; canWrite
           <h1 className="text-[22px] font-semibold tracking-tight text-ink">Pipeline</h1>
           <p className="text-[13px] text-charcoal/70">Drag leads between stages — changes save instantly. Sorted by lead score.</p>
         </div>
-        <Link href="/admin/leads" className="inline-flex h-10 items-center rounded-full border border-ink/10 bg-white px-4 text-[13px] font-medium text-ink transition hover:border-brand">
-          Table view
-        </Link>
+        <div className="flex items-center gap-3">
+          <span
+            className="inline-flex items-center gap-2 rounded-full border border-ink/10 bg-white px-4 py-2 text-[13px] font-medium"
+            title="Closed Deal leads as a share of all active leads"
+          >
+            <span className="h-2 w-2 rounded-full bg-emerald-600" aria-hidden />
+            Conversion
+            <b className="text-ink">
+              {(() => {
+                const closed = items.filter((c) => c.status === "CLOSED_DEAL").length;
+                return `${closed}/${items.length}${items.length ? ` (${Math.round((closed / items.length) * 100)}%)` : ""}`;
+              })()}
+            </b>
+          </span>
+          <Link href="/admin/leads" className="inline-flex h-10 items-center rounded-full border border-ink/10 bg-white px-4 text-[13px] font-medium text-ink transition hover:border-brand">
+            Table view
+          </Link>
+        </div>
       </div>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5" role="list" aria-label="Lead pipeline stages">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-6" role="list" aria-label="Lead pipeline stages">
         {STAGES.map((stage) => {
           const stageCards = byStage[stage.key];
           const total = stageCards.reduce((a, c) => a + declaredBudgetValue(c.budget), 0);

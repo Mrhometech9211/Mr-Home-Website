@@ -5,7 +5,8 @@ import { ApiError, getIp, handle, json, readJson } from "@/lib/api";
 import { destroyAllUserSessions, hashPassword, requireUser } from "@/lib/auth";
 import { audit } from "@/lib/audit";
 import { computeLeadScore } from "@/lib/lead-score";
-import { buildSchema, columnsOf, getResource, toRow } from "@/lib/resources-server";
+import { assertPublishFlags, buildSchema, columnsOf, getResource, resolveCustomRoleName, toRow } from "@/lib/resources-server";
+import { effectiveHas } from "@/lib/permissions";
 
 type Ctx = { params: Promise<{ resource: string; id: string }> };
 
@@ -41,9 +42,14 @@ export const PATCH = handle<Ctx>(async (req, ctx) => {
   const prev = existing as Record<string, unknown>;
   const body = await readJson<Record<string, unknown>>(req);
   const data = buildSchema(res.def, true).parse(body) as Record<string, unknown>;
+  assertPublishFlags(resource, me, data);
 
   if (resource === "users") {
-    if (data.role && data.role !== prev.role && me.role !== "SUPER_ADMIN") throw new ApiError(403, "Only a Super Admin can change roles");
+    if (data.role && data.role !== prev.role && !(me.role === "SUPER_ADMIN" || (me.role === "ADMIN" && data.role !== "SUPER_ADMIN"))) throw new ApiError(403, "Only a Super Admin can grant the Super Admin role");
+    if ((data.role === "CUSTOM" || data.customRoleId != null || data.customRoleName) && !effectiveHas(me.role, "roles.write", me.effectivePermissions ?? null)) throw new ApiError(403, "Only users who manage roles can assign custom roles");
+    await resolveCustomRoleName(me, data);
+    // Role escalation guard: an actor can never grant themselves permissions or a role they do not hold.
+    if (numericId === me.id && ((data.role && data.role !== me.role) || ("customRoleId" in data && data.customRoleId !== me.customRoleId))) throw new ApiError(403, "You cannot change your own role or permissions");
     if (numericId === me.id && data.active === false) throw new ApiError(400, "You cannot deactivate your own account");
     if (numericId === me.id && data.role && data.role !== me.role) throw new ApiError(400, "You cannot change your own role");
     if (data.password) {
@@ -53,6 +59,11 @@ export const PATCH = handle<Ctx>(async (req, ctx) => {
     }
     delete data.password;
     if (data.active === false) await destroyAllUserSessions(numericId);
+  }
+
+  // News: stamp publishedAt the first time an article goes live.
+  if (resource === "news" && data.published === true && !prev.publishedAt && data.publishedAt === undefined) {
+    data.publishedAt = new Date();
   }
 
   const [row] = await db.update(res.table).set(toRow(res.table, data) as never).where(eq(cols.id, numericId)).returning();

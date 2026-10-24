@@ -13,5 +13,5 @@ export const GET = handle(async (req) => {
     const rotated = await rotateSession(token, { ip: getIp(req), userAgent: req.headers.get("user-agent") });
     if (rotated) store.set(SESSION_COOKIE, rotated.token, sessionCookieOptions(rotated.expiresAt));
   }
-  return json({ user: { id: user.id, name: user.name, email: user.email, role: user.role, permissions: ROLE_PERMISSIONS[user.role] } });
+  return json({ user: { id: user.id, name: user.name, email: user.email, role: user.role, permissions: user.role === "CUSTOM" ? (user.effectivePermissions ?? []) : ROLE_PERMISSIONS[user.role] } });
 });

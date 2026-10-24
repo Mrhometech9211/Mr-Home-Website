@@ -60,6 +60,24 @@ export function EarthSection({ section, markets, projectCounts, standalone = fal
   const [selected, setSelected] = useState<string | null>(initialSlug ?? null);
   const listRef = useRef<HTMLUListElement>(null);
 
+  // Warm the three.js chunk once the browser is idle (not during first paint):
+  // the hero and intro video get the bandwidth first, yet the globe chunk is
+  // ready long before this below-the-fold section is reached.
+  useEffect(() => {
+    type IdleWindow = Window & {
+      requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+    const w = window as IdleWindow;
+    const start = () => { void import("./Earth3D"); };
+    if (typeof w.requestIdleCallback === "function") {
+      const id = w.requestIdleCallback(start, { timeout: 4000 });
+      return () => w.cancelIdleCallback?.(id);
+    }
+    const t = window.setTimeout(start, 2500);
+    return () => window.clearTimeout(t);
+  }, []);
+
   // Default to the flagship market after entering view so the rotation is visible.
   useEffect(() => {
     if (!inView || selected) return;

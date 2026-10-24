@@ -9,7 +9,7 @@ export type FieldDef = {
   type: FieldType;
   required?: boolean;
   options?: { label: string; value: string }[];
-  relation?: "markets" | "users" | "projects" | "cities";
+  relation?: "markets" | "users" | "projects" | "cities" | "roles";
   help?: string;
   width?: "full" | "half" | "third";
   jsonShape?: JsonShape;
@@ -53,17 +53,57 @@ export const PROJECT_STATUSES = [
   { label: "Sold Out", value: "sold-out" },
 ];
 
-export const LEAD_STATUSES = ["NEW", "CONTACTED", "QUALIFIED", "CONVERTED", "LOST", "ARCHIVED"] as const;
+export const LEAD_STATUSES = ["NEW", "CONTACTED", "QUALIFIED", "CONVERTED", "CLOSED_DEAL", "LOST", "ARCHIVED"] as const;
+
+/** Admin unit picker options — stored as plain labels ("Sqft", not "ft²"). */
+export const AREA_UNITS = [
+  { label: "Sqft", value: "sqft" },
+  { label: "Sqmt", value: "sqmt" },
+  { label: "Marla", value: "marla" },
+  { label: "Kanal", value: "kanal" },
+];
 
 export const RESOURCES: Record<string, ResourceDef> = {
+  news: {
+    key: "news", label: "News", singular: "Article", icon: "news", read: "news.read", write: "news.write",
+    publishable: true, featurable: true, archivable: true, duplicatable: true,
+    previewPath: (r) => `/news/${r.slug}`,
+    listColumns: ["title", "category", "marketId", "publishedAt", "featured", "published", "archived"],
+    searchFields: ["title", "excerpt", "slug"],
+    defaultSort: { column: "createdAt", dir: "desc" },
+    filters: [
+      { name: "published", label: "Status", options: [{ label: "Published", value: "true" }, { label: "Draft", value: "false" }] },
+      { name: "archived", label: "Archive", options: [{ label: "Active", value: "false" }, { label: "Archived", value: "true" }] },
+    ],
+    fields: [
+      { name: "title", label: "Title", type: "text", required: true, group: "Basics" },
+      { name: "slug", label: "Slug", type: "slug", required: true, group: "Basics", width: "half", help: "URL: /news/[slug]" },
+      { name: "category", label: "Category", type: "text", width: "half", help: "e.g. Market Report, Guides, Announcements" },
+      { name: "marketId", label: "Market / Country", type: "relation", relation: "markets", width: "half" },
+      { name: "country", label: "Country (free text)", type: "text", width: "half" },
+      { name: "excerpt", label: "Excerpt", type: "textarea", max: 400, group: "Content", help: "Shown on cards and in search results." },
+      { name: "body", label: "Body (Markdown)", type: "textarea", required: true, max: 40000, group: "Content", help: "Markdown: #, ##, ###, bold **text**, bullet lists." },
+      { name: "coverImage", label: "Cover Image", type: "image", group: "Media" },
+      { name: "coverImageAlt", label: "Cover Image Alt Text", type: "text", group: "Media", width: "half" },
+      { name: "videoUrl", label: "Video URL", type: "text", group: "Media", width: "half", help: "Embed URL for the article video." },
+      { name: "author", label: "Author", type: "text", group: "Basics", width: "half" },
+      { name: "authorRole", label: "Author Role", type: "text", group: "Basics", width: "half" },
+      { name: "featured", label: "Featured", type: "boolean", group: "Status", width: "third" },
+      { name: "published", label: "Published", type: "boolean", group: "Status", width: "third", help: "Unpublished articles are drafts — never visible publicly." },
+      { name: "archived", label: "Archived", type: "boolean", group: "Status", width: "third" },
+      ...seoFields,
+      { name: "seoKeywords", label: "SEO Keywords", type: "text", group: "SEO", help: "Comma-separated keywords for structured data." },
+    ],
+  },
   projects: {
     key: "projects", label: "Projects", singular: "Project", icon: "building", read: "projects.read", write: "projects.write",
     publishable: true, featurable: true, archivable: true, orderable: true, duplicatable: true,
     previewPath: (r) => `/projects/${r.slug}`,
-    listColumns: ["name", "marketId", "city", "status", "price", "featured", "published", "updatedAt"],
+    listColumns: ["name", "purpose", "marketId", "city", "status", "areaValue", "price", "featured", "published", "updatedAt"],
     searchFields: ["name", "city", "developer", "slug"],
     defaultSort: { column: "order", dir: "asc" },
     filters: [
+      { name: "purpose", label: "Listing purpose", options: [{ label: "For Sale (Buy page)", value: "sale" }, { label: "For Rent (Rent page)", value: "rent" }] },
       { name: "status", label: "Status", options: PROJECT_STATUSES },
       { name: "published", label: "Visibility", options: [{ label: "Published", value: "true" }, { label: "Draft", value: "false" }] },
       { name: "archived", label: "Archive", options: [{ label: "Active", value: "false" }, { label: "Archived", value: "true" }] },
@@ -78,6 +118,7 @@ export const RESOURCES: Record<string, ResourceDef> = {
       { name: "latitude", label: "Latitude", type: "number", group: "Basics", width: "half" },
       { name: "longitude", label: "Longitude", type: "number", group: "Basics", width: "half" },
       { name: "developer", label: "Developer", type: "text", group: "Basics" },
+      { name: "purpose", label: "Listing purpose", type: "select", required: true, options: [{ label: "For Sale — shows on the Buy page", value: "sale" }, { label: "For Rent — shows on the Rent page", value: "rent" }], group: "Basics", width: "half", help: "Tag the project so it appears in Buy or Rent. Only published projects are listed publicly." },
       { name: "shortDescription", label: "Short Description", type: "textarea", group: "Content", max: 300 },
       { name: "description", label: "Description", type: "textarea", group: "Content", max: 8000 },
       { name: "price", label: "Starting Price", type: "number", group: "Details", width: "half" },
@@ -87,7 +128,8 @@ export const RESOURCES: Record<string, ResourceDef> = {
       { name: "handover", label: "Handover", type: "text", group: "Details", width: "third" },
       { name: "bedrooms", label: "Bedrooms", type: "text", group: "Details", width: "third" },
       { name: "bathrooms", label: "Bathrooms", type: "text", group: "Details", width: "third" },
-      { name: "area", label: "Area", type: "text", group: "Details", width: "third" },
+      { name: "areaValue", label: "Area", type: "number", group: "Details", width: "third", help: "Numeric value only — pick the unit next to it." },
+      { name: "areaUnit", label: "Area unit", type: "select", options: AREA_UNITS, group: "Details", width: "third" },
       { name: "status", label: "Status", type: "select", options: PROJECT_STATUSES, group: "Details", width: "third" },
       { name: "order", label: "Sort Order", type: "number", group: "Details", width: "third" },
       { name: "featured", label: "Featured", type: "boolean", group: "Details", width: "third" },
@@ -158,9 +200,9 @@ export const RESOURCES: Record<string, ResourceDef> = {
     listColumns: ["page", "key", "title", "order", "enabled", "updatedAt"],
     searchFields: ["page", "key", "title"],
     defaultSort: { column: "order", dir: "asc" },
-    filters: [{ name: "page", label: "Page", options: [{ label: "Home", value: "home" }, { label: "Why Mr.Home", value: "why-mr-home" }, { label: "Projects", value: "projects" }, { label: "Markets", value: "markets" }, { label: "Contact", value: "contact" }] }],
+    filters: [{ name: "page", label: "Page", options: [{ label: "Home", value: "home" }, { label: "Why Mr.Home", value: "why-mr-home" }, { label: "Projects", value: "projects" }, { label: "Markets", value: "markets" }, { label: "Contact", value: "contact" }, { label: "List Your Property", value: "list-your-property" }] }],
     fields: [
-      { name: "page", label: "Page", type: "select", required: true, options: [{ label: "Home", value: "home" }, { label: "Why Mr.Home", value: "why-mr-home" }, { label: "Projects", value: "projects" }, { label: "Markets", value: "markets" }, { label: "Contact", value: "contact" }], width: "third" },
+      { name: "page", label: "Page", type: "select", required: true, options: [{ label: "Home", value: "home" }, { label: "Why Mr.Home", value: "why-mr-home" }, { label: "Projects", value: "projects" }, { label: "Markets", value: "markets" }, { label: "Contact", value: "contact" }, { label: "List Your Property", value: "list-your-property" }], width: "third" },
       { name: "key", label: "Section Key", type: "text", required: true, width: "third", help: "home: hero, stats, why, earth, projects, journey, inquiry" },
       { name: "order", label: "Order", type: "number", width: "third" },
       { name: "enabled", label: "Enabled", type: "boolean", width: "third" },
@@ -172,7 +214,7 @@ export const RESOURCES: Record<string, ResourceDef> = {
       { name: "ctaHref", label: "Primary CTA Link", type: "text", group: "Actions", width: "half" },
       { name: "secondaryCtaLabel", label: "Secondary CTA Label", type: "text", group: "Actions", width: "half" },
       { name: "secondaryCtaHref", label: "Secondary CTA Link", type: "text", group: "Actions", width: "half" },
-      { name: "image", label: "Image", type: "image", group: "Media" },
+      { name: "image", label: "Image", type: "image", group: "Media", help: "For a picture beside the text (left/right or above/below), use Pages → edit the page → Add block → Image + Text." },
       { name: "video", label: "Video URL", type: "text", group: "Media" },
       { name: "background", label: "Background", type: "text", group: "Media", help: "CSS colour/gradient or image URL" },
       { name: "items", label: "Items (cards / stats / steps)", type: "json", jsonShape: "items", group: "Items" },
@@ -230,12 +272,14 @@ export const RESOURCES: Record<string, ResourceDef> = {
   },
   users: {
     key: "users", label: "Users", singular: "User", icon: "users", read: "users.read", write: "users.write",
-    listColumns: ["name", "email", "role", "active", "lastLoginAt", "createdAt"], searchFields: ["name", "email"], defaultSort: { column: "createdAt", dir: "desc" },
+    listColumns: ["name", "email", "role", "customRoleId", "active", "lastLoginAt", "createdAt"], searchFields: ["name", "email"], defaultSort: { column: "createdAt", dir: "desc" },
     filters: [{ name: "role", label: "Role", options: [{ label: "Super Admin", value: "SUPER_ADMIN" }, { label: "Admin", value: "ADMIN" }, { label: "Editor", value: "EDITOR" }] }],
     fields: [
       { name: "name", label: "Name", type: "text", required: true, width: "half" },
       { name: "email", label: "Email", type: "email", required: true, width: "half" },
-      { name: "role", label: "Role", type: "select", required: true, options: [{ label: "Super Admin", value: "SUPER_ADMIN" }, { label: "Admin", value: "ADMIN" }, { label: "Editor", value: "EDITOR" }], width: "half" },
+      { name: "role", label: "Role", type: "select", required: true, options: [{ label: "Super Admin", value: "SUPER_ADMIN" }, { label: "Admin", value: "ADMIN" }, { label: "Editor", value: "EDITOR" }, { label: "Custom (permission set)", value: "CUSTOM" }], width: "half" },
+      { name: "customRoleId", label: "Assigned custom role", type: "relation", relation: "roles", width: "half", group: "Access", help: "Which permission set this user gets when role = Custom. Manage the sets under Roles — assign or lock exactly what they may edit." },
+      { name: "customRoleName", label: "Custom role name", type: "text", width: "half", group: "Access", max: 80, help: "Type a role title (e.g. Property Editor). A matching role is created automatically and assigned." },
       { name: "active", label: "Active", type: "boolean", width: "half" },
       { name: "password", label: "Password", type: "password", help: "Required when creating. Leave blank to keep unchanged when editing. Min 10 characters." },
     ],
@@ -253,7 +297,7 @@ export const RESOURCES: Record<string, ResourceDef> = {
   leads: {
     key: "leads", label: "Leads", singular: "Lead", icon: "inbox", read: "leads.read", write: "leads.write", archivable: true,
     detailPath: (r) => `/admin/leads/${r.id}`,
-    listColumns: ["name", "email", "phone", "score", "marketId", "projectId", "status", "source", "assignedTo", "createdAt"],
+    listColumns: ["name", "email", "phone", "score", "marketId", "projectId", "status", "source", "assignedTo", "ip", "createdAt"],
     searchFields: ["name", "email", "phone", "message", "country"],
     defaultSort: { column: "createdAt", dir: "desc" },
     filters: [
@@ -287,6 +331,9 @@ export const ADMIN_NAV = [
   { href: "/admin/leads", label: "Leads / CRM", icon: "inbox", permission: "leads.read" },
   { href: "/admin/leads/pipeline", label: "Pipeline", icon: "kanban", permission: "leads.read" },
   { href: "/admin/projects", label: "Projects", icon: "building", permission: "projects.read" },
+  { href: "/admin/brochures", label: "Brochures", icon: "brochure", permission: "brochures.read" },
+  { href: "/admin/news", label: "News", icon: "news", permission: "news.read" },
+  { href: "/admin/pages", label: "Pages", icon: "layout", permission: "pages.read" },
   { href: "/admin/markets", label: "Markets", icon: "globe", permission: "markets.read" },
   { href: "/admin/cities", label: "Cities", icon: "map-pin", permission: "markets.read" },
   { href: "/admin/sections", label: "Content", icon: "layout", permission: "content.read" },
@@ -300,5 +347,6 @@ export const ADMIN_NAV = [
   { href: "/admin/whatsapp", label: "WhatsApp", icon: "message", permission: "settings.read" },
   { href: "/admin/settings", label: "Settings", icon: "settings", permission: "settings.read" },
   { href: "/admin/users", label: "Users", icon: "users", permission: "users.read" },
+  { href: "/admin/roles", label: "Roles", icon: "shield", permission: "roles.read" },
   { href: "/admin/audit", label: "Audit Logs", icon: "history", permission: "audit.read" },
 ] as const;

@@ -37,6 +37,9 @@
     ".next/dev/types/**/*.ts"
   ],
   "exclude": [
-    "node_modules"
+    "node_modules",
+    "freebuff.wrangler.jsonc",
+    "freebuff.open-next.config.ts",
+    "open-next.config.ts.bak"
   ]
 }

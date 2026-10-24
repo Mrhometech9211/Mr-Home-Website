@@ -9,7 +9,7 @@ import { inputCls, labelCls, Btn } from "./ui";
 import { MediaPicker } from "./MediaPicker";
 
 type Opt = { value: number | string; label: string };
-type Props = { field: FieldDef; value: unknown; onChange: (v: unknown) => void; error?: string; relationOptions?: Record<string, Opt[]> };
+type Props = { field: FieldDef; value: unknown; onChange: (v: unknown) => void; error?: string; relationOptions?: Record<string, Opt[]>; /** Extra options merged into a select field (e.g. dynamic page keys). */ extraOptions?: Opt[] };
 
 const JSON_SHAPES: Record<string, { key: string; label: string; type?: "image" | "select-icon" | "text" }[]> = {
   stats: [{ key: "label", label: "Label" }, { key: "value", label: "Value" }],
@@ -34,7 +34,7 @@ export function ImageInput({ value, onChange, accept = "image" }: { value: strin
   );
 }
 
-export function FieldInput({ field: f, value, onChange, error, relationOptions }: Props) {
+export function FieldInput({ field: f, value, onChange, error, relationOptions, extraOptions }: Props) {
   const [picker, setPicker] = useState(false);
   const id = `f-${f.name}`;
   const wrap = (child: React.ReactNode, hideLabel = false) => (
@@ -59,7 +59,17 @@ export function FieldInput({ field: f, value, onChange, error, relationOptions }
         </label>, true,
       );
     case "select":
-      return wrap(<select id={id} value={(value as string) ?? ""} onChange={(e) => onChange(e.target.value)} className={inputCls}><option value="">— Select —</option>{f.options?.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select>);
+      return wrap(
+        <select id={id} value={(value as string) ?? ""} onChange={(e) => onChange(e.target.value)} className={inputCls}>
+          <option value="">— Select —</option>
+          {f.options?.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          {extraOptions && extraOptions.length > 0 && (
+            <optgroup label="Custom pages (from Pages)">
+              {extraOptions.map((o) => <option key={String(o.value)} value={String(o.value)}>{o.label}</option>)}
+            </optgroup>
+          )}
+        </select>,
+      );
     case "relation": {
       const opts = relationOptions?.[f.relation ?? ""] ?? [];
       return wrap(<select id={id} value={value == null ? "" : String(value)} onChange={(e) => onChange(e.target.value ? Number(e.target.value) : null)} className={inputCls}><option value="">— None —</option>{opts.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select>);

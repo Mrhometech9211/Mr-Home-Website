@@ -4,7 +4,9 @@ import { db } from "@/db";
 import { ApiError, getIp, handle, json, readJson } from "@/lib/api";
 import { requireUser } from "@/lib/auth";
 import { audit } from "@/lib/audit";
-import { columnsOf, getResource } from "@/lib/resources-server";
+import { PUBLISHABLE_RESOURCES, columnsOf, getResource } from "@/lib/resources-server";
+import { effectiveHas } from "@/lib/permissions";
+import { assertPublishFlags } from "@/lib/resources-server";
 
 type Ctx = { params: Promise<{ resource: string }> };
 
@@ -22,6 +24,16 @@ export const POST = handle<Ctx>(async (req, ctx) => {
   const { action, ids, order } = schema.parse(await readJson(req));
   const cols = columnsOf(res.table);
   if (resource === "users" && ids.includes(me.id) && action === "delete") throw new ApiError(400, "You cannot delete your own account");
+  // Publish-flag bulk actions require the matching publish permission server-side.
+  if (["publish", "unpublish", "feature", "unfeature"].includes(action) && PUBLISHABLE_RESOURCES[resource]) {
+    const perm = PUBLISHABLE_RESOURCES[resource];
+    if (!effectiveHas(me.role, perm, me.effectivePermissions ?? null)) throw new ApiError(403, `You do not have permission to publish this content (requires ${perm})`);
+  }
+  assertPublishFlags(resource, me, action === "reorder" ? {} : { [action === "publish" || action === "unpublish" ? "published" : action === "feature" || action === "unfeature" ? "featured" : "archived"]: true });
+  if (res.def.publishable && ["enable", "disable"].includes(action)) {
+    const perm = PUBLISHABLE_RESOURCES[resource];
+    if (perm && !effectiveHas(me.role, perm, me.effectivePermissions ?? null)) throw new ApiError(403, `You do not have permission to publish this content (requires ${perm})`);
+  }
 
   const setFlag = async (col: string, value: boolean) => {
     if (!cols[col]) throw new ApiError(400, `This resource does not support "${action}"`);

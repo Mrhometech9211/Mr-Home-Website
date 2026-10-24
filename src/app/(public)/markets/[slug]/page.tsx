@@ -45,7 +45,9 @@ export default async function MarketPage({ params }: { params: Params }) {
             <div className="text-5xl" aria-hidden>{market.flag}</div>
             <h1 className="display mt-4 text-[clamp(2.6rem,6vw,5rem)]">{market.name}</h1>
             <p className="mt-4 text-[18px] text-white/75">{market.tagline}</p>
-            <p className="mt-3 flex items-center gap-2 text-[13px] text-white/50"><MapPin className="h-4 w-4 text-brand-bright" />{(market.cities ?? []).join(" · ")} · {market.latitude.toFixed(2)}°, {market.longitude.toFixed(2)}°</p>
+            {/* Cities come from the admin Cities module first, so a city added there
+                appears here immediately; the market's tag list is the fallback. */}
+            <p className="mt-3 flex items-center gap-2 text-[13px] text-white/50"><MapPin className="h-4 w-4 text-brand-bright" />{(marketCities.length ? marketCities.map((c) => c.name) : (market.cities ?? [])).join(" · ")} · {market.latitude.toFixed(2)}°, {market.longitude.toFixed(2)}°</p>
             <div className="mt-8 flex flex-wrap gap-3">
               <Button3D href={`/projects?market=${market.slug}`}>View Projects ({projects.length})</Button3D>
               <Button3D href={wa} variant="whatsapp" icon="whatsapp" external>WhatsApp Advisor</Button3D>
@@ -55,7 +57,7 @@ export default async function MarketPage({ params }: { params: Params }) {
       </section>
 
       {market.stats && market.stats.length > 0 && (
-        <div className="relative z-10 mx-auto -mt-8 max-w-[1400px] px-4 sm:px-6">
+        <div className="relative z-10 mx-auto mt-8 max-w-[1400px] px-4 sm:px-6">
           <Reveal stagger="[data-s]" className="glass grid grid-cols-1 gap-px overflow-hidden rounded-[28px] shadow-card sm:grid-cols-3">
             {market.stats.map((s) => <div key={s.label} data-s className="px-6 py-6"><div className="text-[11px] uppercase tracking-wider text-mist">{s.label}</div><div className="mt-1 text-[24px] font-semibold tracking-tight text-brand">{s.value}</div></div>)}
           </Reveal>

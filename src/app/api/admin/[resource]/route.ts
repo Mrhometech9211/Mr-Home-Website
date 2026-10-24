@@ -1,15 +1,16 @@
 import { and, asc, desc, eq, ilike, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
-import { leadActivities, markets, projects, users } from "@/db/schema";
+import { customRoles, leadActivities, markets, projects, users } from "@/db/schema";
 import { ApiError, getIp, handle, json, parseIntParam, readJson } from "@/lib/api";
 import { hashPassword, requireUser } from "@/lib/auth";
 import { audit } from "@/lib/audit";
-import { buildSchema, columnsOf, getResource, toRow } from "@/lib/resources-server";
+import { assertPublishFlags, buildSchema, columnsOf, getResource, resolveCustomRoleName, toRow } from "@/lib/resources-server";
 
 type Ctx = { params: Promise<{ resource: string }> };
 
 async function relationLabels(keys: string[]) {
   const out: Record<string, Record<number, string>> = {};
+  if (keys.includes("roles")) out.roles = Object.fromEntries((await db.select({ id: customRoles.id, name: customRoles.name }).from(customRoles)).map((m) => [m.id, m.name]));
   if (keys.includes("markets")) out.markets = Object.fromEntries((await db.select({ id: markets.id, name: markets.name }).from(markets)).map((m) => [m.id, m.name]));
   if (keys.includes("projects")) out.projects = Object.fromEntries((await db.select({ id: projects.id, name: projects.name }).from(projects)).map((m) => [m.id, m.name]));
   if (keys.includes("users")) out.users = Object.fromEntries((await db.select({ id: users.id, name: users.name }).from(users)).map((m) => [m.id, m.name]));
@@ -65,14 +66,26 @@ export const POST = handle<Ctx>(async (req, ctx) => {
   const me = await requireUser(res.def.write);
   const body = await readJson<Record<string, unknown>>(req);
   const data = buildSchema(res.def).parse(body) as Record<string, unknown>;
+  assertPublishFlags(resource, me, data);
 
   if (resource === "users") {
     if (!data.password) throw new ApiError(400, "Password is required for new users");
     if (data.role === "SUPER_ADMIN" && me.role !== "SUPER_ADMIN") throw new ApiError(403, "Only a Super Admin can create Super Admins");
+    // Assigning the flexible CUSTOM role requires managing roles; the permission
+    // set is attached via customRoleId and enforced at request time.
+    if (data.role === "CUSTOM" || data.customRoleId != null || data.customRoleName) {
+      const { userCan } = await import("@/lib/auth");
+      if (!userCan(me, "roles.write")) throw new ApiError(403, "Only users who manage roles can assign custom roles");
+    }
+    await resolveCustomRoleName(me, data);
     data.passwordHash = await hashPassword(data.password as string);
     delete data.password;
   }
   if (resource === "leads") data.source = data.source || "manual";
+  // News: an article created straight in the published state gets its publish timestamp.
+  if (resource === "news" && data.published === true && data.publishedAt === undefined) {
+    data.publishedAt = new Date();
+  }
 
   const [row] = await db.insert(res.table).values(toRow(res.table, data) as never).returning();
   const created = row as Record<string, unknown>;

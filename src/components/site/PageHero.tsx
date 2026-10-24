@@ -7,14 +7,17 @@ type Props = { eyebrow?: string | null; title: string; body?: string | null; ima
 
 export function PageHero({ eyebrow, title, body, image, crumbs, children, dark }: Props) {
   return (
-    <section className={cn("relative overflow-hidden pt-32 pb-16 lg:pt-40 lg:pb-20", dark && "bg-space text-white")}>
+    <section className={cn("relative pt-32 pb-16 lg:pt-40 lg:pb-20", dark && "bg-space text-white")}>
       {image && (
         <div className="absolute inset-0">
           <Image src={image} alt="" fill priority className="object-cover" sizes="100vw" />
           <div className={cn("absolute inset-0", dark ? "bg-[linear-gradient(180deg,rgba(5,8,12,0.55),rgba(5,8,12,0.92))]" : "bg-[linear-gradient(180deg,rgba(246,245,240,0.85),rgba(246,245,240,0.97))]")} />
         </div>
       )}
-      <div className="relative mx-auto max-w-[1400px] px-4 sm:px-6">
+      {/* z-40 keeps absolutely-positioned dropdown panels (filter row) above the
+          transformed (framer-motion) listing cards and the WhatsApp bubble that
+          follow in the DOM. Stays below the header (z-50). */}
+      <div className="relative z-40 mx-auto max-w-[1400px] px-4 sm:px-6">
         <Breadcrumbs items={crumbs} dark={dark} />
         <Reveal className="mt-8 max-w-3xl">
           {eyebrow && <p className={cn("eyebrow", dark && "!text-brand-bright")}>{eyebrow}</p>}

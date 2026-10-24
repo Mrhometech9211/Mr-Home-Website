@@ -8,6 +8,7 @@ import { getIp, handle, json, readJson } from "@/lib/api";
 import { clearLoginFailures, loginLockStatus, recordLoginFailure } from "@/lib/rate-limit";
 import { audit } from "@/lib/audit";
 
+
 const schema = z.object({ email: z.string().trim().toLowerCase().email(), password: z.string().min(1).max(200) });
 
 export const POST = handle(async (req) => {

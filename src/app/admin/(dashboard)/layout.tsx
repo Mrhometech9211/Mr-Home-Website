@@ -7,6 +7,7 @@ import { getCurrentUser, hasAnyUsers } from "@/lib/auth";
 import { ROLE_PERMISSIONS } from "@/lib/permissions";
 import { getSettings } from "@/lib/content";
 import { AdminShell } from "@/components/admin/AdminShell";
+import { LeadNotifier } from "@/components/admin/LeadNotifier";
 
 export const metadata: Metadata = { title: "Admin", robots: { index: false, follow: false } };
 export const dynamic = "force-dynamic";
@@ -22,7 +23,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     db.select({ count: sql<number>`count(*)::int` }).from(leads).where(and(eq(leads.status, "NEW"), eq(leads.archived, false))),
   ]);
   return (
-    <AdminShell user={{ id: user.id, name: user.name, email: user.email, role: user.role }} permissions={ROLE_PERMISSIONS[user.role]} brandName={settings.brandName} logo={settings.logo} newLeads={count}>
+    <AdminShell user={{ id: user.id, name: user.name, email: user.email, role: user.role }} permissions={user.role === "CUSTOM" ? user.effectivePermissions ?? [] : ROLE_PERMISSIONS[user.role] as unknown as string[]} brandName={settings.brandName} logo={settings.logo} newLeads={count}>
+      <LeadNotifier />
       {children}
     </AdminShell>
   );

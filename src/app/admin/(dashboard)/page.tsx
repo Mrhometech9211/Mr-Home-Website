@@ -29,7 +29,9 @@ export default async function Dashboard() {
   const trendRows = (daily as unknown as { rows: { day: string; count: number }[] }).rows;
   const s = Object.fromEntries(byStatus.map((r) => [r.status, r.count]));
   const totalLeads = total[0].count;
-  const conversion = totalLeads ? Math.round(((s.CONVERTED ?? 0) / totalLeads) * 100) : 0;
+  // Conversion = Closed Deal share of all active leads (Closed Deals are deals that actually closed).
+  const closedDeals = s.CLOSED_DEAL ?? 0;
+  const conversion = totalLeads ? Math.round(((closedDeals + (s.CONVERTED ?? 0)) / totalLeads) * 100) : 0;
   const weekly = trendRows.slice(-7).reduce((a, b) => a + Number(b.count), 0);
   const monthly = trendRows.reduce((a, b) => a + Number(b.count), 0);
   const today = trendRows[trendRows.length - 1]?.count ?? 0;
@@ -48,12 +50,13 @@ export default async function Dashboard() {
         <div className="flex gap-2"><Link href="/admin/leads/new" className="rounded-lg bg-brand px-4 py-2 text-[13px] font-medium text-white hover:bg-brand-deep">Add lead</Link><Link href="/admin/projects/new" className="rounded-lg border border-ink/10 bg-white px-4 py-2 text-[13px] font-medium text-ink hover:border-ink/30">Add project</Link></div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-9">
         {stat("Total leads", totalLeads)}
         {stat("New", s.NEW ?? 0, "/admin/leads?status=NEW", "text-sky-600")}
         {stat("Contacted", s.CONTACTED ?? 0, "/admin/leads?status=CONTACTED", "text-amber-600")}
         {stat("Qualified", s.QUALIFIED ?? 0, "/admin/leads?status=QUALIFIED", "text-emerald-600")}
         {stat("Converted", s.CONVERTED ?? 0, "/admin/leads?status=CONVERTED")}
+        {stat("Closed Deal", closedDeals, "/admin/leads?status=CLOSED_DEAL", "text-emerald-600")}
         {stat("Lost", s.LOST ?? 0, "/admin/leads?status=LOST", "text-red-600")}
         {stat("Conversion", `${conversion}%`)}
         {stat("Unassigned", unassigned[0].count, "/admin/leads", unassigned[0].count ? "text-amber-600" : undefined)}
@@ -101,7 +104,7 @@ export default async function Dashboard() {
         </section>
         <section className="rounded-2xl border border-ink/8 bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between"><h2 className="text-[14px] font-semibold">Audit trail</h2><Link href="/admin/audit" className="text-[12px] text-brand hover:underline">View all</Link></div>
-          <ul className="mt-3 divide-y divide-ink/6 text-[13px]">{recentAudit.map((a) => <li key={a.id} className="flex items-center justify-between gap-3 py-2"><div><Badge tone="neutral">{a.action}</Badge> <span className="text-charcoal/70">{a.entity}{a.entityId ? ` #${a.entityId}` : ""} · {a.userEmail ?? "system"}</span></div><time className="shrink-0 text-[11.5px] text-mist">{formatDateTime(a.createdAt)}</time></li>)}</ul>
+          <ul className="mt-3 divide-y divide-ink/6 text-[13px]">{recentAudit.map((a) => <li key={a.id} className="flex items-center justify-between gap-3 py-2"><div><Badge tone="neutral">{a.action}</Badge> <span className="text-charcoal/70">{a.entity}{a.entityId ? ` #${a.entityId}` : ""} · {a.userEmail ?? "system"}</span>{a.ip && <span className="ml-2 font-mono text-[11px] text-mist" title="Request IP">{a.ip}</span>}</div><time className="shrink-0 text-[11.5px] text-mist">{formatDateTime(a.createdAt)}</time></li>)}</ul>
         </section>
       </div>
       <div className="flex flex-wrap gap-2 text-[12px]">{Object.entries(s).map(([k, v]) => <Badge key={k} tone={statusTone(k)}>{k}: {v}</Badge>)}</div>

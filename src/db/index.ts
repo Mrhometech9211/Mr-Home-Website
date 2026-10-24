@@ -175,6 +175,7 @@ export function initDb(): Promise<AppDatabase> {
       return db;
     })().catch((e) => {
       // Allow a later request to retry a failed connection instead of caching the error.
+      console.error("[db] initDb failed:", e);
       globalForDb.__mrhDbPromise = undefined;
       throw e;
     });

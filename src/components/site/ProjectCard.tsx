@@ -41,6 +41,7 @@ export function ProjectCard({ project, dark = false, className, priority = false
           <div className="absolute left-4 top-4 flex gap-2">
             {project.featured && <span className="rounded-full bg-brand px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white shadow-glow">Featured</span>}
             <span className="rounded-full bg-black/40 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-white backdrop-blur">{STATUS_LABELS[project.status] ?? project.status}</span>
+            <span className="rounded-full bg-brand/85 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white backdrop-blur">{project.purpose === "rent" ? "For Rent" : "For Sale"}</span>
           </div>
           <span className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-full bg-white/15 text-white opacity-0 backdrop-blur transition-all duration-500 group-hover:opacity-100 group-hover:bg-brand"><ArrowUpRight className="h-4 w-4" /></span>
           <div className="absolute inset-x-4 bottom-4 text-white">

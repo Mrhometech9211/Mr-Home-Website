@@ -4,13 +4,11 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
-import { LayoutDashboard, Inbox, Building2, Globe2, MapPin, KanbanSquare, LayoutTemplate, Menu as MenuIcon, Image as ImageIcon, HelpCircle, Quote, Mail, Search, Scale, MessageCircle, Settings, Users, History, LogOut, ExternalLink, X, UserCircle } from "lucide-react";
+import {  LayoutDashboard, Inbox, Building2, FileText, Globe2, MapPin, KanbanSquare, LayoutTemplate, PanelTop, Menu as MenuIcon, Image as ImageIcon, HelpCircle, Quote, Mail, Search, Scale, MessageCircle, Settings, Users, History, LogOut, ExternalLink, X, UserCircle, Newspaper, FileStack, Layers, Eye, RotateCcw, Save, Shield } from "lucide-react";
 import { ADMIN_NAV } from "@/lib/resources";
 import { CommandPalette } from "@/components/admin/CommandPalette";
 import { cn } from "@/lib/utils";
-import { ToastProvider, useToast } from "./ui";
-
-const ICONS: Record<string, React.ComponentType<{ className?: string }>> = { dashboard: LayoutDashboard, inbox: Inbox, building: Building2, globe: Globe2, "map-pin": MapPin, kanban: KanbanSquare, layout: LayoutTemplate, menu: MenuIcon, image: ImageIcon, help: HelpCircle, quote: Quote, mail: Mail, search: Search, scale: Scale, message: MessageCircle, settings: Settings, users: Users, history: History };
+import { ToastProvider, useToast } from "./ui";  const ICONS: Record<string, React.ComponentType<{ className?: string }>> = { dashboard: LayoutDashboard, inbox: Inbox, building: Building2, brochure: FileText, globe: Globe2, "map-pin": MapPin, kanban: KanbanSquare, layout: LayoutTemplate, menu: MenuIcon, image: ImageIcon, help: HelpCircle, quote: Quote, mail: Mail, search: Search, scale: Scale, message: MessageCircle, settings: Settings, users: Users, history: History, news: Newspaper, pages: PanelTop, shield: Shield };
 
 type Props = { user: { id: number; name: string; email: string; role: string }; permissions: string[]; brandName: string; logo: string; children: ReactNode; newLeads: number };
 
@@ -89,7 +87,7 @@ function Shell({ user, permissions, brandName, logo, children, newLeads }: Props
             <button type="button" onClick={() => setOpen(true)} className="rounded-lg p-2 text-charcoal hover:bg-slate-100 lg:hidden" aria-label="Open menu"><MenuIcon className="h-5 w-5" /></button>
             <span className="text-[12px] font-semibold uppercase tracking-[0.18em] text-mist">{brandName} Admin</span>
           </div>
-          <div className="text-[12px] text-mist">{user.email}</div>
+          <div className="hidden max-w-[45vw] truncate text-[12px] text-mist sm:block">{user.email}</div>
         </header>
         <main className="p-4 lg:p-8">{children}</main>
         <CommandPalette />

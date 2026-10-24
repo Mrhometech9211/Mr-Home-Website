@@ -48,15 +48,22 @@ export const SECTIONS_SEED = [
 
 export const NAV_SEED = [
   { location: "header", label: "Home", href: "/", order: 1 },
-  { location: "header", label: "Why Mr.Home", href: "/why-mr-home", order: 2 },
-  { location: "header", label: "Projects", href: "/projects", order: 3 },
-  { location: "header", label: "Markets", href: "/markets", order: 4 },
-  { location: "header", label: "Contact", href: "/contact", order: 5 },
+  { location: "header", label: "Buy", href: "/buy", order: 2 },
+  { location: "header", label: "Rent", href: "/rent", order: 3 },
+  { location: "header", label: "Projects", href: "/projects", order: 4 },
+  { location: "header", label: "Markets", href: "/markets", order: 5 },
+  { location: "header", label: "News", href: "/news", order: 6 },
+  { location: "header", label: "Why Mr.Home", href: "/why-mr-home", order: 7 },
+  { location: "header", label: "Contact", href: "/contact", order: 8 },
   { location: "footer", label: "Home", href: "/", order: 1 },
   { location: "footer", label: "Why Mr.Home", href: "/why-mr-home", order: 2 },
   { location: "footer", label: "Projects", href: "/projects", order: 3 },
   { location: "footer", label: "Markets", href: "/markets", order: 4 },
   { location: "footer", label: "Contact", href: "/contact", order: 5 },
+  { location: "footer", label: "Buy", href: "/buy", order: 6 },
+  { location: "footer", label: "Rent", href: "/rent", order: 7 },
+  { location: "footer", label: "News", href: "/news", order: 8 },
+  { location: "footer", label: "List Your Property", href: "/list-your-property", order: 9 },
 ];
 
 export const LEGAL_SEED = [
@@ -128,4 +135,49 @@ export const CITIES_SEED = [
   // Oman
   { market: "oman", name: "Muscat", slug: "muscat", latitude: 23.588, longitude: 58.3829, tagline: "Freehold serenity on the Gulf of Oman.", description: "Muscat's Integrated Tourism Complexes grant freehold title and residency at prices well below Dubai.", stats: [{ label: "Entry Price", value: "OMR 90K" }, { label: "Residency", value: "With purchase" }], featured: true, order: 1 },
   { market: "oman", name: "Salalah", slug: "salalah", latitude: 17.0151, longitude: 54.0924, tagline: "The Khareef coast.", description: "Salalah's monsoon coast is an emerging resort market with growing GCC tourism.", stats: [{ label: "Avg. Yield", value: "5–6%" }], featured: false, order: 2 },
+];
+
+/**
+ * Phase 2 seed — a handful of realistic sale/rent listings so the /buy and
+ * /rent marketplaces have live data on first boot. Admin-created listings
+ * replace them as the team publishes real inventory.
+ */
+export const PROPERTIES_SEED = [
+  { market: "uae", title: "Marina Vista 2-Bed Apartment", slug: "marina-vista-2-bed-dubai", purpose: "sale" as const, city: "Dubai", country: "United Arab Emirates", propertyType: "Apartment", price: "1450000", currency: "AED", bedrooms: 2, bathrooms: 2, areaSqm: "118", furnished: "furnished", completion: "ready", availability: "Available now", shortDescription: "High-floor Marina view apartment with pool and gym, vacant on transfer.", description: "A bright two-bedroom residence in Dubai Marina with full sea views, floor-to-ceiling glazing and premium kitchen appliances. Walking distance to the promenade, tram and Marina Mall. Chiller included.", amenities: ["Infinity Pool", "Private Gym", "Covered Parking", "Concierge"], featured: true, order: 1 },
+  { market: "uae", title: "Palm Jumeirah Signature Villa", slug: "palm-jumeirah-signature-villa", purpose: "sale" as const, city: "Dubai", country: "United Arab Emirates", propertyType: "Villa", price: "48000000", currency: "AED", bedrooms: 6, bathrooms: 7, areaSqm: "980", furnished: "unfurnished", completion: "ready", availability: "Private viewings daily", shortDescription: "Signature villa with private beach access and full skyline panorama.", description: "One of Palm Jumeirah's coveted sixteen Signature villas with 25m private beach, infinity pool and uninterrupted Burj Khalifa skyline views. Fully upgraded interiors with Smart Home automation.", amenities: ["Private Beach", "Infinity Pool", "Smart Home", "Private Gym", "24/7 Security"], featured: true, order: 2 },
+  { market: "turkey", title: "Bosphorus Panorama Residence", slug: "bosphorus-panorama-residence-istanbul", purpose: "sale" as const, city: "Istanbul", country: "Türkiye", propertyType: "Apartment", price: "420000", currency: "USD", bedrooms: 3, bathrooms: 2, areaSqm: "165", furnished: "semi", completion: "ready", availability: "Available now", shortDescription: "Citizenship-eligible Bosphorus-view residence minutes from the bridge.", description: "Elegant three-bedroom residence overlooking the Bosphorus with a shared sky lounge, indoor pool and 24/7 concierge. Titles are ready and the purchase qualifies for the Turkish citizenship programme.", amenities: ["Sky Lounge", "Indoor Pool", "Concierge", "Covered Parking"], featured: true, order: 3 },
+  { market: "pakistan", title: "DHA Phase 8 Corner Plot", slug: "dha-phase-8-corner-plot-islamabad", purpose: "sale" as const, city: "Islamabad", country: "Pakistan", propertyType: "Land / Plot", price: "38500000", currency: "PKR", bedrooms: null, bathrooms: null, areaSqm: "658", furnished: null, completion: "ready", availability: "Immediate possession", shortDescription: "Level corner plot on the main boulevard with all dues cleared.", description: "10 marla corner plot in DHA Phase 8 Islamabad facing the 100-ft boulevard. File is transferable tomorrow, all development dues paid, and underground utilities are live on the street.", amenities: [], featured: false, order: 4 },
+  { market: "spain", title: "Sierra Blanca Duplex Penthouse", slug: "sierra-blanca-duplex-penthouse-marbella", purpose: "sale" as const, city: "Marbella", country: "Spain", propertyType: "Penthouse", price: "1980000", currency: "EUR", bedrooms: 4, bathrooms: 4, areaSqm: "310", furnished: "furnished", completion: "offplan", availability: "Q1 2027 handover", shortDescription: "Duplex penthouse with sea views in Marbella's golden Sierra Blanca.", description: "Duplex penthouse in the guarded Sierra Blanca estate with panoramic Mediterranean views, private jacuzzi terrace and designer Juniper kitchen. Five minutes from the Golden Mile.", amenities: ["Private Jacuzzi", "Infinity Pool", "Private Gym", "24/7 Security"], featured: false, order: 5 },
+  { market: "uae", title: "Dubai Hills Fairway 1-Bed", slug: "dubai-hills-fairway-1-bed", purpose: "rent" as const, city: "Dubai", country: "United Arab Emirates", propertyType: "Apartment", price: "98000", currency: "AED", rentPeriod: "year" as const, bedrooms: 1, bathrooms: 1, areaSqm: "82", furnished: "unfurnished", completion: "ready", availability: "Moving in December", shortDescription: "Golf-course facing one-bed in Dubai Hills, chiller included.", description: "Tranquil fairway-view one bedroom in Dubai Hills Estate with open-plan kitchen, built-in wardrobes and balcony. Resident pool and gym access; two chiller months covered by the community thereafter.", amenities: ["Pool", "Gym", "Covered Parking"], featured: true, order: 1 },
+  { market: "uk", title: "Marylebone Garden Flat", slug: "marylebone-garden-flat-london", purpose: "rent" as const, city: "London", country: "United Kingdom", propertyType: "Apartment", price: "4400", currency: "GBP", rentPeriod: "month" as const, bedrooms: 2, bathrooms: 1, areaSqm: "95", furnished: "furnished", completion: "ready", availability: "Available now", shortDescription: "Period two-bed with private garden square access in Marylebone.", description: "Characteristic raised-ground-floor two bedroom flat overlooking a private garden square, steps from Marylebone High Street. Fully furnished to a hotel standard with weekly gardener included.", amenities: ["Garden Square", "Furnished", "Visitor Parking"], featured: true, order: 2 },
+  { market: "saudi-arabia", title: "King Fahd Road Corporate Apartment", slug: "king-fahd-road-corporate-apartment-riyadh", purpose: "rent" as const, city: "Riyadh", country: "Saudi Arabia", propertyType: "Apartment", price: "165000", currency: "SAR", rentPeriod: "year" as const, bedrooms: 3, bathrooms: 3, areaSqm: "220", furnished: "furnished", completion: "ready", availability: "Corporate leasing only", shortDescription: "Fully serviced three-bed for corporate tenants on King Fahd Road.", description: "Corporate-ready serviced apartment with housekeeping five days a week, dedicated business centre access and covered parking for two vehicles. Ideal for relocating executives and diplomatic staff.", amenities: ["Serviced", "Business Centre", "Covered Parking", "Housekeeping"], featured: false, order: 3 },
+];
+
+/**
+ * Phase 5 seed — two starter News articles so the new section has live content;
+ * Admin editors remove and replace them with real articles in Admin → News.
+ */
+export const NEWS_SEED = [
+  {
+    slug: "dubai-prime-rental-yields-hit-record-q3",
+    title: "Dubai Prime Rental Yields Hit a New Record in Q3",
+    excerpt: "Prime residential yields in Dubai climbed to 9.1% in the third quarter as supply of turnkey units lagged record demand.",
+    category: "Market Report",
+    market: "uae",
+    country: "United Arab Emirates",
+    author: "MR.HOME Research",
+    authorRole: "Market Intelligence",
+    body: "Prime residential rental yields in Dubai climbed to 9.1% in the third quarter, the highest reading since 2019, as the supply of ready-to-move units continues to lag record population inflows.\n\nOff-plan pipelines remain healthy, but completions for turnkey marina and downtown stock remain below demand. Investors buying ready units achieved average gross yields of 8–9.5% depending on district, with JVC and Dubai Hills posting the strongest year-on-year rental growth.\n\nThe premium resale segment tightened further: roughly 40% of Palm Jumeirah sellers are off-market, compressing visible inventory. MR.HOME advisors recommend taking a 30–45 day decision window for turnkey units before spring demand accelerates.",
+  },
+  {
+    slug: "golden-visa-bands-explained-2026",
+    title: "The 2026 Golden Visa Bands, Explained",
+    excerpt: "Everything investors ask about the UAE two-million-dirham threshold, qualifying assets and the ten-year residency path.",
+    category: "Guides",
+    market: "uae",
+    country: "United Arab Emirates",
+    author: "MR.HOME Advisory",
+    authorRole: "Residency Desk",
+    body: "From January 2026, Dubai's ten-year Golden Visa continues to hinge on a minimum AED 2M property investment, now expressible across up to two registered title deeds.\n\nKey band details: financed purchases count once the bank has issued a completion letter for the 50% down payment; multiple titles may be combined; and coastal ITC freeholds in Oman remain a separate pathway entirely.\n\nMR.HOME residency specialists handle the full application — property valuation certificates, Dubai Land Department registration and the Emirates ID biometrics appointment — in a single coordinated track.",
+  },
 ];

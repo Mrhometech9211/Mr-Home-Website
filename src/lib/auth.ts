@@ -5,8 +5,8 @@ import { randomBytes, scrypt as scryptCb, timingSafeEqual, createHash } from "cr
 import { promisify } from "util";
 import { and, eq, gt, lt } from "drizzle-orm";
 import { db, initDb } from "@/db";
-import { sessions, users, type Role, type User } from "@/db/schema";
-import { hasPermission, type Permission } from "./permissions";
+import { customRoles, sessions, users, type Role, type User } from "@/db/schema";
+import { effectiveHas, hasPermission, type Permission } from "./permissions";
 import { ApiError } from "./api";
 
 const scrypt = promisify(scryptCb);
@@ -72,7 +72,16 @@ export async function destroyAllUserSessions(userId: number) {
   await db.delete(sessions).where(eq(sessions.userId, userId));
 }
 
-export type SafeUser = Omit<User, "passwordHash">;
+export type SafeUser = Omit<User, "passwordHash"> & { effectivePermissions?: string[] | null };
+
+/**
+ * Effective permission check that honours custom roles (Phase 6).
+ * `user.effectivePermissions` is populated by getCurrentUser for CUSTOM-role users.
+ */
+function can(user: SafeUser, permission: Permission): boolean {
+  const role = user.role as Role;
+  return effectiveHas(role, permission, user.effectivePermissions ?? null);
+}
 
 export const getCurrentUser = cache(async (): Promise<SafeUser | null> => {
   const store = await cookies();
@@ -88,9 +97,19 @@ export const getCurrentUser = cache(async (): Promise<SafeUser | null> => {
       .limit(1);
     const u = rows[0]?.user;
     if (!u || !u.active) return null;
+    // Custom roles load their granular permission set from custom_roles.
+    let effectivePermissions: string[] | null = null;
+    if (u.role === "CUSTOM") {
+      if (u.customRoleId != null) {
+        const roleRows = await db.select({ permissions: customRoles.permissions }).from(customRoles).where(eq(customRoles.id, u.customRoleId)).limit(1);
+        effectivePermissions = Array.isArray(roleRows[0]?.permissions) ? (roleRows[0]!.permissions as string[]) : [];
+      } else {
+        effectivePermissions = [];
+      }
+    }
     const { passwordHash: _ph, ...safe } = u;
     void _ph;
-    return safe;
+    return Object.assign(safe, { effectivePermissions });
   } catch {
     return null;
   }
@@ -99,12 +118,15 @@ export const getCurrentUser = cache(async (): Promise<SafeUser | null> => {
 export async function requireUser(permission?: Permission): Promise<SafeUser> {
   const user = await getCurrentUser();
   if (!user) throw new ApiError(401, "Authentication required");
-  if (permission && !hasPermission(user.role as Role, permission)) throw new ApiError(403, "You do not have permission to perform this action");
+  if (permission && !can(user, permission)) throw new ApiError(403, "You do not have permission to perform this action");
   return user;
 }
 
 export function userCan(user: SafeUser | null, permission: Permission) {
-  return !!user && hasPermission(user.role as Role, permission);
+  if (!user) return false;
+  const role = user.role as Role;
+  if (role === "CUSTOM") return effectiveHas(role, permission, user.effectivePermissions ?? null);
+  return hasPermission(role, permission);
 }
 
 export async function hasAnyUsers() {

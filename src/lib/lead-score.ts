@@ -25,7 +25,7 @@ export function computeLeadScore(lead: {
   let score = 0;
 
   const status = (lead.status ?? "NEW").toString().toUpperCase();
-  const statusWeights: Record<string, number> = { NEW: 5, CONTACTED: 15, QUALIFIED: 30, CONVERTED: 50, LOST: 0, ARCHIVED: 0 };
+  const statusWeights: Record<string, number> = { NEW: 5, CONTACTED: 15, QUALIFIED: 30, CONVERTED: 50, CLOSED_DEAL: 60, LOST: 0, ARCHIVED: 0 };
   score += statusWeights[status] ?? 5;
 
   const budget = (lead.budget ?? "").toLowerCase();

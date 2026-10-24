@@ -7,6 +7,7 @@ import { buildWhatsAppLink, telLink } from "@/lib/whatsapp";
 import { SocialIcon } from "./Icons";
 import { NewsletterForm } from "./NewsletterForm";
 import { BackToTop } from "./BackToTop";
+import { safeHref } from "@/lib/url";
 
 type Props = { settings: SiteSettings; nav: NavigationItem[]; markets: Market[] };
 
@@ -28,8 +29,12 @@ export function Footer({ settings: s, nav, markets }: Props) {
             <ul className="mt-6 flex items-center gap-2" aria-label="Social media">
               {s.socialLinks.filter((l) => l.url).map((l) => (
                 <li key={l.platform}>
-                  <a href={l.url} target="_blank" rel="noopener noreferrer" aria-label={l.platform} className="flex h-10 w-10 items-center justify-center rounded-full border border-ink/10 bg-white text-ink transition hover:-translate-y-0.5 hover:border-brand hover:text-brand hover:shadow-glow">
-                    <SocialIcon platform={l.platform} className="h-4 w-4" />
+                  <a href={safeHref(l.url)} target="_blank" rel="noopener noreferrer" aria-label={l.platform} className="flex h-10 w-10 items-center justify-center rounded-full border border-ink/10 bg-white text-ink transition hover:-translate-y-0.5 hover:border-brand hover:text-brand hover:shadow-glow">
+                    {l.icon ? (
+                      <Image src={l.icon} alt={l.platform} width={18} height={18} className="h-[18px] w-[18px] object-contain" unoptimized />
+                    ) : (
+                      <SocialIcon platform={l.platform} className="h-4 w-4" />
+                    )}
                   </a>
                 </li>
               ))}
@@ -40,7 +45,7 @@ export function Footer({ settings: s, nav, markets }: Props) {
             <h3 className="eyebrow mb-4 !text-ink">Navigation</h3>
             <ul className="space-y-2.5 text-[14px] text-charcoal/80">
               {nav.map((n) => (
-                <li key={n.id}><Link href={n.href} className="transition hover:text-brand">{n.label}</Link></li>
+                <li key={n.id}><Link href={safeHref(n.href)} className="transition hover:text-brand">{n.label}</Link></li>
               ))}
             </ul>
           </nav>
@@ -60,7 +65,7 @@ export function Footer({ settings: s, nav, markets }: Props) {
               <li><a href={telLink(s.phone)} className="flex items-start gap-2.5 transition hover:text-brand"><Phone className="mt-0.5 h-4 w-4 shrink-0 text-brand" />{s.phone}</a></li>
               <li><a href={`mailto:${s.email}`} className="flex items-start gap-2.5 transition hover:text-brand"><Mail className="mt-0.5 h-4 w-4 shrink-0 text-brand" />{s.email}</a></li>
               <li><a href={wa} target="_blank" rel="noopener noreferrer" className="flex items-start gap-2.5 transition hover:text-brand"><MessageCircle className="mt-0.5 h-4 w-4 shrink-0 text-brand" />WhatsApp</a></li>
-              <li><a href={s.mapUrl || "#"} target="_blank" rel="noopener noreferrer" className="flex items-start gap-2.5 transition hover:text-brand"><MapPin className="mt-0.5 h-4 w-4 shrink-0 text-brand" /><span>{s.address}</span></a></li>
+              <li><a href={s.mapUrl ? safeHref(s.mapUrl) : "#"} target="_blank" rel="noopener noreferrer" className="flex items-start gap-2.5 transition hover:text-brand"><MapPin className="mt-0.5 h-4 w-4 shrink-0 text-brand" /><span>{s.address}</span></a></li>
               <li className="flex items-start gap-2.5"><Clock className="mt-0.5 h-4 w-4 shrink-0 text-brand" />{s.workingHours}</li>
             </ul>
           </div>
@@ -93,7 +98,7 @@ export function Footer({ settings: s, nav, markets }: Props) {
           <p>© {year} {s.copyrightText}</p>
           <ul className="flex flex-wrap items-center gap-x-6 gap-y-2">
             {s.footerLinks.map((l) => (
-              <li key={l.href}><Link href={l.href} className="transition hover:text-brand">{l.label}</Link></li>
+              <li key={l.href}><Link href={safeHref(l.href)} className="transition hover:text-brand">{l.label}</Link></li>
             ))}
           </ul>
           <BackToTop />

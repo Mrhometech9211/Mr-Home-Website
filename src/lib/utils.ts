@@ -24,6 +24,23 @@ export function formatPrice(price: string | number | null | undefined, currency?
   return `${cur} ${compact}`;
 }
 
+/** Plain area-unit labels — never "ft²"/"m²" superscripts. */
+export const AREA_UNIT_LABELS: Record<string, string> = {
+  sqft: "Sqft",
+  sqmt: "Sqmt",
+  sqm: "Sqmt",
+  marla: "Marla",
+  kanal: "Kanal",
+};
+
+/** Project area from the admin value+unit picker, falling back to the legacy text column. */
+export function formatProjectArea(p: { area?: string | null; areaValue?: string | number | null; areaUnit?: string | null }) {
+  const unit = p.areaUnit ? AREA_UNIT_LABELS[p.areaUnit] : null;
+  const value = p.areaValue == null || p.areaValue === "" ? NaN : Number(p.areaValue);
+  if (unit && Number.isFinite(value)) return `${value.toLocaleString()} ${unit}`;
+  return p.area && p.area.trim().length ? p.area : null;
+}
+
 export function formatDate(d: Date | string | null | undefined) {
   if (!d) return "—";
   return new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
@@ -52,6 +69,7 @@ export function statusTone(s: string): "neutral" | "green" | "amber" | "red" | "
     case "CONTACTED": return "amber";
     case "QUALIFIED": return "green";
     case "CONVERTED": return "slate";
+    case "CLOSED_DEAL": return "green";
     case "LOST": return "red";
     case "ARCHIVED": return "neutral";
     default: return "neutral";

@@ -30,6 +30,21 @@ export function ResourceForm({ resourceKey, id, canWrite, inline, onSaved }: { r
   }, [def]);
 
   const relationsKey = def.fields.filter((f) => f.type === "relation" && f.relation).map((f) => f.relation).join(",");
+  /** Sections resource: published pages from the Pages module appear in the page dropdown. */
+  const wantsPagesLookup = resourceKey === "sections" && def.fields.some((f) => f.name === "page");
+  const [pageOpts, setPageOpts] = useState<Opt[]>([]);
+
+  useEffect(() => {
+    if (!wantsPagesLookup) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const d = await api<{ data: { id: number; title: string; pageKey: string }[] }>("/api/admin/pages-lookup");
+        if (!cancelled) setPageOpts(d.data.map((p) => ({ value: p.pageKey, label: `${p.title} (created page)` })));
+      } catch { /* without pages.read the standard dropdown still shows the defaults */ }
+    })();
+    return () => { cancelled = true; };
+  }, [wantsPagesLookup]);
 
   useEffect(() => {
     if (!relationsKey) return;
@@ -53,7 +68,7 @@ export function ResourceForm({ resourceKey, id, canWrite, inline, onSaved }: { r
       if (id === "new") {
         const defaults: Record<string, unknown> = {};
         for (const f of def.fields) if (f.type === "boolean") defaults[f.name] = f.name === "published" || f.name === "active" || f.name === "enabled" || f.name === "visible" ? true : false;
-        if (resourceKey === "projects") { defaults.currency = "USD"; defaults.status = "available"; defaults.published = false; }
+        if (resourceKey === "projects") { defaults.currency = "USD"; defaults.status = "available"; defaults.published = false; defaults.purpose = "sale"; defaults.areaUnit = "sqft"; }
         if (resourceKey === "leads") { defaults.status = "NEW"; defaults.source = "manual"; }
         if (!cancelled) { setValues(defaults); setLoading(false); }
         return;
@@ -130,7 +145,7 @@ export function ResourceForm({ resourceKey, id, canWrite, inline, onSaved }: { r
         <section key={group} className="rounded-2xl border border-ink/8 bg-white p-5 shadow-sm">
           <h2 className="mb-4 text-[12px] font-semibold uppercase tracking-[0.18em] text-mist">{group}</h2>
           <div className="grid gap-4 md:grid-cols-6">
-            {fields.map((f) => <FieldInput key={f.name} field={f} value={values[f.name]} onChange={(v) => set(f.name, v)} error={errors[f.name]} relationOptions={relOpts} />)}
+            {fields.map((f) => <FieldInput key={f.name} field={f} value={values[f.name]} onChange={(v) => set(f.name, v)} error={errors[f.name]} relationOptions={relOpts} extraOptions={f.name === "page" && resourceKey === "sections" ? pageOpts : undefined} />)}
           </div>
         </section>
       ))}

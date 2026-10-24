@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 export function StatsBar({ items, id = "stats", dark = false, compact = false }: { items: SectionItem[]; id?: string; dark?: boolean; compact?: boolean }) {
   if (!items.length) return null;
   return (
-    <div id={id} className={cn("relative z-10 mx-auto max-w-[1400px] px-4 sm:px-6", compact ? "" : "-mt-8 lg:-mt-14")}>
+    <div id={id} className={cn("relative z-10 mx-auto max-w-[1400px] px-4 sm:px-6")}>
       <Reveal stagger="[data-stat]" className={cn("grid grid-cols-2 gap-px overflow-hidden rounded-[28px] shadow-card md:grid-cols-3 lg:grid-cols-5", dark ? "glass-dark" : "glass")}>
         {items.map((it, i) => (
           <div key={i} data-stat className={cn("flex items-center gap-4 px-5 py-6", dark ? "border-white/5" : "border-ink/5", i !== 0 && "lg:border-l", i % 2 === 1 && "border-l lg:border-l", i >= 2 && "border-t lg:border-t-0")}>

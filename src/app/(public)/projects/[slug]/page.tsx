@@ -3,11 +3,13 @@ import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { BedDouble, Bath, Ruler, CalendarClock, Building2, MapPin, TrendingUp, FileText, Check, Download } from "lucide-react";
-import { getProjectBySlug, getPublishedMarkets, getPublishedProjects, getSettings } from "@/lib/content";
+import { getProjectBySlug, getPublishedMarkets, getPublishedProjects, getSettings, getActiveBrochureForProject } from "@/lib/content";
+import { BrochureGate } from "@/components/site/BrochureGate";
+import { ProjectPricing } from "@/components/site/ProjectPricing";
 import { getCurrentUser } from "@/lib/auth";
 import { buildMetadata } from "@/lib/seo";
 import { buildWhatsAppLink, fillTemplate } from "@/lib/whatsapp";
-import { formatPrice, STATUS_LABELS } from "@/lib/utils";
+import { formatProjectArea, STATUS_LABELS } from "@/lib/utils";
 import { Breadcrumbs, JsonLd } from "@/components/site/Breadcrumbs";
 import { Button3D } from "@/components/ui/Button3D";
 import { Reveal } from "@/components/site/Reveal";
@@ -33,9 +35,10 @@ export default async function ProjectPage({ params }: { params: Params }) {
   const [project, settings] = await Promise.all([getProjectBySlug(slug, !!user), getSettings()]);
   if (!project) notFound();
   const isPreview = !project.published || project.archived;
-  const [related, markets] = await Promise.all([
+  const [related, markets, brochure] = await Promise.all([
     getPublishedProjects({ market: project.market?.slug, limit: 3, excludeId: project.id }),
     getPublishedMarkets(),
+    getActiveBrochureForProject(project.id),
   ]);
   const wa = buildWhatsAppLink(settings.whatsapp, fillTemplate(settings.whatsappProjectMessage, { project: project.name, market: project.market?.name ?? project.country ?? "" }));
   const gallery = [project.coverImage, ...(project.gallery ?? [])].filter((g): g is string => !!g);
@@ -43,7 +46,7 @@ export default async function ProjectPage({ params }: { params: Params }) {
     { icon: Building2, label: "Type", value: project.propertyType },
     { icon: BedDouble, label: "Bedrooms", value: project.bedrooms },
     { icon: Bath, label: "Bathrooms", value: project.bathrooms },
-    { icon: Ruler, label: "Area", value: project.area },
+    { icon: Ruler, label: "Area", value: formatProjectArea(project) },
     { icon: CalendarClock, label: "Handover", value: project.handover },
     { icon: TrendingUp, label: "Est. ROI", value: project.roi },
   ].filter((f) => f.value);
@@ -85,13 +88,15 @@ export default async function ProjectPage({ params }: { params: Params }) {
               {project.developer && <p className="mt-1 text-[13.5px] text-white/50">Developed by <span className="text-white/80">{project.developer}</span></p>}
             </div>
             <div className="glass-dark rounded-3xl p-6 lg:col-span-4">
-              <div className="text-[11px] uppercase tracking-[0.2em] text-white/50">Starting from</div>
-              <div className="mt-1 text-[32px] font-semibold tracking-tight text-brand-bright">{formatPrice(project.price, project.currency)}</div>
-              {project.roi && <div className="mt-1 text-[13px] text-white/70">Est. ROI {project.roi}</div>}
-              <div className="mt-5 flex flex-col gap-2">
-                <Button3D href="#inquire" variant="primary">Request Details</Button3D>
-                <Button3D href={wa} variant="whatsapp" icon="whatsapp" external>WhatsApp Advisor</Button3D>
-              </div>
+              {/* Client island: searchable world-currency selector first (above
+                  Download Brochure), then the live-converted price, then actions. */}
+              <ProjectPricing price={project.price} currency={project.currency} roi={project.roi}>
+                <div className="mt-5 flex flex-col gap-2">
+                  {brochure?.allowDownload && <BrochureGate projectSlug={project.slug} projectName={project.name} />}
+                  <Button3D href="#inquire" variant="primary">Request Details</Button3D>
+                  <Button3D href={wa} variant="whatsapp" icon="whatsapp" external>WhatsApp Advisor</Button3D>
+                </div>
+              </ProjectPricing>
             </div>
           </Reveal>
         </div>
@@ -99,7 +104,7 @@ export default async function ProjectPage({ params }: { params: Params }) {
 
       {/* Facts */}
       {facts.length > 0 && (
-        <div className="relative z-10 mx-auto -mt-8 max-w-[1400px] px-4 sm:px-6">
+        <div className="relative z-10 mx-auto mt-8 max-w-[1400px] px-4 sm:px-6">
           <Reveal stagger="[data-f]" className="glass grid grid-cols-2 gap-px overflow-hidden rounded-[28px] shadow-card md:grid-cols-3 lg:grid-cols-6">
             {facts.map((f) => (
               <div key={f.label} data-f className="flex items-center gap-3 px-5 py-5">

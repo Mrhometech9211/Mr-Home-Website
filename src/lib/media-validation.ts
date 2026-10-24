@@ -7,7 +7,7 @@ export const ALLOWED: Record<string, { ext: string[]; kind: "image" | "video" | 
   "image/svg+xml": { ext: ["svg"], kind: "image", max: 1 * 1024 * 1024 },
   "video/mp4": { ext: ["mp4", "m4v"], kind: "video", max: 80 * 1024 * 1024 },
   "video/webm": { ext: ["webm"], kind: "video", max: 80 * 1024 * 1024 },
-  "application/pdf": { ext: ["pdf"], kind: "document", max: 20 * 1024 * 1024 },
+  "application/pdf": { ext: ["pdf"], kind: "document", max: 60 * 1024 * 1024 },
 };
 
 const MAX_DIM = 8000;
@@ -64,7 +64,9 @@ export function validateUpload(file: { name: string; type: string; size: number 
   if (sniffed !== declared && !(declared === "image/avif" && sniffed === "video/mp4")) return { ok: false as const, error: "File contents do not match the declared type." };
   if (declared === "image/svg+xml") {
     const txt = buf.toString("utf8");
-    if (/<script|on\w+\s*=|javascript:|<foreignObject|<iframe|xlink:href\s*=\s*["']\s*(?!#|data:image)/i.test(txt)) return { ok: false as const, error: "SVG contains disallowed active content." };
+    const singleQuote = String.fromCharCode(0x27);
+    const svgDanger = new RegExp("<script|on\\w+\\s*=|javascript:|<foreignObject|<iframe|xlink:href\\s*=\\s*[" + JSON.stringify(singleQuote) + "\\s]*(?!#|data:image)", "i").test(txt);
+    if (svgDanger) return { ok: false as const, error: "SVG contains disallowed active content." };
   }
   let dims: { width: number; height: number } | null = null;
   if (rule.kind === "image" && declared !== "image/svg+xml" && declared !== "image/avif") {

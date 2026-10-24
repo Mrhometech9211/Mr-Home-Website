@@ -7,7 +7,7 @@ export default async function robots(): Promise<MetadataRoute.Robots> {
   await getSettings();
   const base = "https://www.mrhomerealestate.com";
   return {
-    rules: [{ userAgent: "*", allow: "/", disallow: ["/admin", "/api/", "/admin/"] }],
+    rules: [{ userAgent: "*", allow: "/", disallow: ["/admin", "/api/", "/admin/", "/preview"] }],
     sitemap: `${base}/sitemap.xml`,
   };
 }

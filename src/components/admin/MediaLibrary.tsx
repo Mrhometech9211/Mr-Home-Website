@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Upload, Search, Trash2, Copy, RefreshCw, Link2 } from "lucide-react";
+import { Upload, Search, Trash2, Copy, RefreshCw, Link2, Download } from "lucide-react";
 import { api, Btn, Confirm, inputCls, labelCls, Modal, useToast, EmptyState } from "./ui";
 import { MediaThumb, useMediaUpload, type MediaRow } from "./MediaPicker";
 import { cn, formatDateTime } from "@/lib/utils";
@@ -92,8 +92,8 @@ export function MediaLibrary({ canWrite }: { canWrite: boolean }) {
           : (
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
               {items.map((m) => (
-                <button key={m.id} type="button" onClick={() => openItem(m)} className="group overflow-hidden rounded-xl border border-ink/8 bg-white text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
-                  <div className="aspect-square bg-slate-50"><MediaThumb m={m} /></div>
+                <button key={m.id} type="button" onClick={() => openItem(m)} className="group relative overflow-hidden rounded-xl border border-ink/8 bg-white text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
+                  <div className="relative aspect-square bg-slate-50"><MediaThumb m={m} /></div>
                   <div className="p-2"><div className="truncate text-[12px] font-medium">{m.originalName}</div><div className="text-[10.5px] text-mist">{(m.size / 1024).toFixed(0)} KB{m.width ? ` · ${m.width}×${m.height}` : ""}</div></div>
                 </button>
               ))}
@@ -106,7 +106,10 @@ export function MediaLibrary({ canWrite }: { canWrite: boolean }) {
         {active && (
           <div className="grid gap-6 md:grid-cols-2">
             <div className="overflow-hidden rounded-xl border border-ink/8 bg-slate-50">
-              {active.mimeType.startsWith("video/") ? <video src={active.url} controls className="w-full" /> : active.mimeType === "application/pdf" ? <iframe src={active.url} title={active.filename} className="h-[420px] w-full" /> : <div className="aspect-[4/3]"><MediaThumb m={active} className="object-contain" /></div>}
+              {active.mimeType.startsWith("video/") ? <video src={active.url} controls className="w-full" /> : active.mimeType === "application/pdf" ? <iframe src={active.url} title={active.filename} className="h-[420px] w-full" /> : <div className="relative aspect-[4/3]"><MediaThumb m={active} className="object-contain" /></div>}
+              <a href={active.url} download={active.originalName} className="mt-2 flex items-center justify-center gap-1.5 rounded-xl bg-ink px-3 py-2 text-[12.5px] font-medium text-white transition hover:bg-brand">
+                <Download className="h-3.5 w-3.5" /> {active.mimeType.startsWith("video/") || active.mimeType === "application/pdf" ? "Open / download file" : "Download"}
+              </a>
             </div>
             <div className="space-y-4 text-[13px]">
               <dl className="grid grid-cols-2 gap-2 rounded-xl bg-slate-50 p-3 text-[12px]">

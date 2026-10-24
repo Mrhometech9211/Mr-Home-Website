@@ -5,11 +5,16 @@ import { useRef, useState, useTransition } from "react";
 import { Search, X } from "lucide-react";
 import { cn, STATUS_LABELS } from "@/lib/utils";
 
-type Props = { markets: { slug: string; name: string; flag: string; cities?: string[] }[]; types: string[] };
+type Props = {
+  markets: { id: number; slug: string; name: string; flag: string; cities?: string[] }[];
+  types: string[];
+  /** Every published city so the City dropdown works before a market is picked. */
+  cities?: { name: string; marketId: number | null }[];
+};
 
 const sel = "h-11 rounded-full border border-ink/10 bg-white px-4 text-[13.5px] text-ink outline-none transition focus:border-brand focus:ring-4 focus:ring-brand/10";
 
-export function ProjectFilters({ markets, types }: Props) {
+export function ProjectFilters({ markets, types, cities = [] }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
@@ -32,7 +37,13 @@ export function ProjectFilters({ markets, types }: Props) {
 
   const market = params.get("market") ?? "";
   const city = params.get("city") ?? "";
-  const cityOptions = markets.find((m) => m.slug === market)?.cities ?? [];
+  const activeMarket = markets.find((m) => m.slug === market);
+  const cityOptions = Array.from(
+    new Set([
+      ...(activeMarket?.cities ?? []),
+      ...cities.filter((c) => !activeMarket || c.marketId === activeMarket.id).map((c) => c.name),
+    ]),
+  ).sort((a, b) => a.localeCompare(b));
   const hasAny = !!(market || city || params.get("type") || params.get("status") || params.get("q"));
 
   return (
@@ -62,8 +73,8 @@ export function ProjectFilters({ markets, types }: Props) {
           {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select>
         <label className="sr-only" htmlFor="city-filter">City</label>
-        <select id="city-filter" value={city} onChange={(e) => update("city", e.target.value)} className={sel} disabled={!!market && cityOptions.length === 0}>
-          <option value="">{market && cityOptions.length ? "All Cities" : "All Cities (select a market)"}</option>
+        <select id="city-filter" value={city} onChange={(e) => update("city", e.target.value)} className={sel}>
+          <option value="">All Cities</option>
           {cityOptions.map((c) => <option key={c} value={c}>{c}</option>)}
         </select>
         {hasAny && <button type="button" onClick={() => start(() => router.replace(pathname, { scroll: false }))} className="inline-flex h-11 items-center gap-1 rounded-full px-3 text-[13px] text-charcoal/70 hover:text-brand"><X className="h-3.5 w-3.5" /> Clear</button>}

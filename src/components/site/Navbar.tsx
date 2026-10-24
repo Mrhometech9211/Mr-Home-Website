@@ -5,15 +5,22 @@ import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Menu, X, MessageCircle, Phone } from "lucide-react";
+import { Menu, X, MessageCircle, Home } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { safeHref } from "@/lib/url";
 import { Button3D } from "@/components/ui/Button3D";
 
 export type NavItem = { id: number; label: string; href: string; openInNewTab?: boolean; children?: NavItem[] };
 
-type Props = { brandName: string; logo: string; items: NavItem[]; whatsappHref: string; phone: string; telHref: string; whatsappLabel?: string };
+/** DB-stored nav hrefs are admin input — neutralize dangerous schemes. */
+function withSafeChildren(items: NavItem[]): NavItem[] {
+  return items.map((i) => ({ ...i, href: safeHref(i.href), children: i.children?.map((c) => ({ ...c, href: safeHref(c.href) })) }));
+}
 
-export function Navbar({ brandName, logo, items, whatsappHref, phone, telHref }: Props) {
+type Props = { brandName: string; logo: string; items: NavItem[]; whatsappHref: string; whatsappLabel?: string };
+
+export function Navbar({ brandName, logo, items, whatsappHref }: Props) {
+  const navItems = withSafeChildren(items);
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
@@ -23,31 +30,39 @@ export function Navbar({ brandName, logo, items, whatsappHref, phone, telHref }:
   const [openDropdown, setOpenDropdown] = useState<number | null>(null);
 
   useEffect(() => {
-    // Auto-hide on scroll down past the hero, reveal on scroll up (premium pattern).
-    // Direction threshold avoids jitter on tiny scroll differences. Header always
-    // comes back via: scroll up, mouse near the top edge, wheel-up intent (works
-    // inside pinned/scroll-jacked sections where scrollY may not change), or
-    // keyboard focus entering the header — it can never get permanently stuck.
+    // Auto-hide the moment the page moves down (‑ not after 140px, which was the
+    // old "late" behaviour), reveal on the first upward pixel. rAF-batched so
+    // it stays glued to the scroll position instead of lagging a frame behind.
+    // The bar can always come back: scroll up, mouse near the top edge, wheel-up
+    // intent (works inside scroll-jacked sections) or keyboard focus.
     let lastY = window.scrollY;
+    let ticking = false;
     const reveal = () => setHidden(false);
-    const onScroll = () => {
+    const apply = () => {
+      ticking = false;
       const y = window.scrollY;
-      setScrolled(y > 24);
-      const goingDown = y > lastY + 6;
-      const goingUp = y < lastY - 6;
+      setScrolled(y > 12);
+      const delta = y - lastY;
       if (open || openDropdown !== null) {
         setHidden(false);
-      } else if (goingDown && y > 480) {
+      } else if (delta > 1 && y > 24) {
         setHidden(true);
-      } else if (goingUp || y <= 480) {
+      } else if (delta < -1 || y <= 24) {
         setHidden(false);
       }
       lastY = y;
     };
+    const onScroll = () => {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(apply);
+    };
     const onMouseMove = (e: MouseEvent) => { if (e.clientY <= 90) reveal(); };
-    const onWheel = (e: WheelEvent) => { if (e.deltaY < -4) reveal(); };
+    // Wheel intent lets the bar return even where a pinned section swallows
+    // scrollY changes. Any upward wheel delta reveals, not just large ones.
+    const onWheel = (e: WheelEvent) => { if (e.deltaY < 0) reveal(); };
     const onFocusIn = (e: FocusEvent) => { if (headerRef.current?.contains(e.target as Node)) reveal(); };
-    onScroll();
+    apply();
     window.addEventListener("scroll", onScroll, { passive: true });
     window.addEventListener("mousemove", onMouseMove, { passive: true });
     window.addEventListener("wheel", onWheel, { passive: true });
@@ -96,8 +111,8 @@ export function Navbar({ brandName, logo, items, whatsappHref, phone, telHref }:
     <header
       ref={headerRef}
       className={cn(
-        "fixed inset-x-0 top-0 z-50 transition-all duration-500 will-change-transform",
-        hidden ? "-translate-y-full opacity-0" : "translate-y-0 opacity-100",
+        "fixed inset-x-0 top-0 z-50 transition-transform duration-200 ease-[cubic-bezier(.16,1,.3,1)] will-change-transform",
+        hidden ? "pointer-events-none -translate-y-[110%] opacity-0" : "translate-y-0 opacity-100",
         scrolled ? "py-2" : "py-4",
       )}
     >
@@ -109,7 +124,7 @@ export function Navbar({ brandName, logo, items, whatsappHref, phone, telHref }:
 
           <nav aria-label="Primary" className="hidden md:block">
             <ul className="flex items-center gap-1">
-              {items.map((item) => (
+              {navItems.map((item) => (
                 <li key={item.id} className="relative" onMouseEnter={() => item.children?.length && setOpenDropdown(item.id)} onMouseLeave={() => setOpenDropdown(null)}>
                   <Link
                     href={item.href}
@@ -139,13 +154,16 @@ export function Navbar({ brandName, logo, items, whatsappHref, phone, telHref }:
           </nav>
 
           <div className="flex items-center gap-2">
-            <span
-              aria-label={`Call us on ${phone}`}
-              className="hidden h-11 select-none items-center gap-2 whitespace-nowrap rounded-full border border-brand/30 bg-brand/10 px-4 text-[14px] font-bold tracking-tight text-ink shadow-soft lg:flex"
+            {/* Phase 2: the old mobile-number card is now a List Your Property
+                action. The number itself stays in the mobile drawer and footer. */}
+            <Link
+              href="/list-your-property"
+              aria-label="List your property with us"
+              className="hidden h-11 select-none items-center gap-2 whitespace-nowrap rounded-full border border-brand/30 bg-brand/10 px-4 text-[14px] font-semibold tracking-tight text-ink shadow-soft transition hover:border-brand/60 hover:text-brand lg:flex"
             >
-              <Phone className="h-4 w-4 text-brand" aria-hidden />
-              {phone}
-            </span>
+              <Home className="h-4 w-4 text-brand" aria-hidden />
+              List Your Property
+            </Link>
             <div className="hidden lg:block">
               <Button3D href={whatsappHref} variant="primary" size="sm" icon="whatsapp" external>Speak With Us</Button3D>
             </div>
@@ -195,7 +213,7 @@ export function Navbar({ brandName, logo, items, whatsappHref, phone, telHref }:
               </div>
               <nav aria-label="Mobile" className="flex-1 overflow-y-auto px-3" data-lenis-prevent>
                 <ul className="space-y-1">
-                  {items.map((item, i) => (
+                  {navItems.map((item, i) => (
                     <motion.li key={item.id} initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.05 * i + 0.1 }}>
                       <Link href={item.href} onClick={() => setOpen(false)} aria-current={isActive(item.href) ? "page" : undefined} className={cn("flex items-center justify-between rounded-2xl px-4 py-4 text-[22px] font-medium tracking-tight", isActive(item.href) ? "bg-white text-brand shadow-soft" : "text-ink hover:bg-white/70")}>
                         {item.label}
@@ -209,8 +227,10 @@ export function Navbar({ brandName, logo, items, whatsappHref, phone, telHref }:
                 </ul>
               </nav>
               <div className="space-y-3 border-t border-ink/10 p-5">
-                <a href={whatsappHref} target="_blank" rel="noopener noreferrer" className="flex h-12 items-center justify-center gap-2 rounded-full bg-brand text-white shadow-glow"><MessageCircle className="h-4 w-4" /> Chat on WhatsApp</a>
-                <a href={telHref} className="flex h-12 items-center justify-center gap-2 rounded-full border border-ink/10 bg-white text-ink"><Phone className="h-4 w-4" /> {phone}</a>
+                {/* The raw phone number is deliberately gone from the mobile
+                    drawer — the primary action is listing a property. */}
+                <Link href="/list-your-property" onClick={() => setOpen(false)} className="flex h-12 items-center justify-center gap-2 rounded-full bg-brand text-[15px] font-semibold text-white shadow-glow"><Home className="h-4 w-4" /> List Your Property</Link>
+                <a href={whatsappHref} target="_blank" rel="noopener noreferrer" className="flex h-12 items-center justify-center gap-2 rounded-full border border-ink/10 bg-white text-ink"><MessageCircle className="h-4 w-4" /> Chat on WhatsApp</a>
               </div>
             </motion.div>
         </>

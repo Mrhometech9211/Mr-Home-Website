@@ -115,6 +115,20 @@ export function EmptyState({ title, description, action }: { title: string; desc
   );
 }
 
+/** Loading placeholder matching the design system's .skeleton shimmer class. */
+export function Skeleton({ className }: { className?: string }) {
+  return <div aria-hidden="true" className={cn("skeleton", className)} />;
+}
+
+/* ---------- Inputs ---------- */
+export function Input({ className, ...rest }: React.InputHTMLAttributes<HTMLInputElement>) {
+  return <input className={cn(inputCls, "h-9 text-[13px]", className)} {...rest} />;
+}
+
+export function Textarea({ className, ...rest }: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  return <textarea className={cn("w-full rounded-lg border border-ink/10 bg-white px-3 py-2 text-[13px] text-ink outline-none transition placeholder:text-mist focus:border-brand focus:ring-4 focus:ring-brand/10", className)} {...rest} />;
+}
+
 export function Card({ children, className, title, actions }: { children: ReactNode; className?: string; title?: string; actions?: ReactNode }) {
   return (
     <section className={cn("rounded-2xl border border-ink/8 bg-white shadow-sm", className)}>

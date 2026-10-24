@@ -3,8 +3,8 @@ import { and, eq, gt } from "drizzle-orm";
 import { db } from "@/db";
 import { leadActivities, leads, markets, projects } from "@/db/schema";
 import { getIp, handle, json, readJson } from "@/lib/api";
-import { rateLimit } from "@/lib/rate-limit";
 import { sanitizeText } from "@/lib/utils";
+import { runNewLeadAutomations } from "@/lib/automations";
 
 const schema = z.object({
   name: z.string().trim().min(2, "Please enter your full name").max(120),
@@ -26,9 +26,9 @@ const schema = z.object({
 });
 
 export const POST = handle(async (req) => {
+  // No per-IP submission cap on leads — every enquiry must reach the inbox and
+  // trigger the desktop notifier. The honeypot below still filters bots.
   const ip = getIp(req);
-  const rl = rateLimit(`lead:${ip}`, 5, 10 * 60 * 1000);
-  if (!rl.ok) return json({ error: `Too many submissions. Please try again in ${Math.ceil(rl.retryAfter / 60)} minutes.` }, { status: 429, headers: { "Retry-After": String(rl.retryAfter) } });
 
   const body = await readJson<Record<string, unknown>>(req);
   if (typeof body.website === "string" && body.website.length > 0) {
@@ -50,8 +50,10 @@ export const POST = handle(async (req) => {
     if (!p.length) return json({ error: "Selected project is invalid" }, { status: 400 });
   }
 
-  // Duplicate handling: same email + same project within 24h → attach as activity instead of a new lead.
-  const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  // Double-submit guard only: same email + same project within 60s is treated as
+  // one accidental double-tap (logged as an activity). Repeat enquiries beyond
+  // that always create a fresh, notifiable lead — no 24h suppression.
+  const since = new Date(Date.now() - 60 * 1000);
   const dupConds = [eq(leads.email, data.email), gt(leads.createdAt, since)];
   if (projectId) dupConds.push(eq(leads.projectId, projectId));
   const dup = await db.select({ id: leads.id }).from(leads).where(and(...dupConds)).limit(1);
@@ -83,5 +85,8 @@ export const POST = handle(async (req) => {
     })
     .returning({ id: leads.id });
   await db.insert(leadActivities).values({ leadId: lead.id, type: "created", description: `Lead created from ${data.source || "website"}${data.page ? ` (${data.page})` : ""}` });
-  return json({ ok: true, id: lead.id, message: "Thank you. An MR.HOME advisor will contact you within one business day." }, { status: 201 });
+  // Admin → Settings → Automation rules (scoring / assignment / follow-up task).
+  // Best-effort: a rule failure must never turn a captured lead into an error.
+  const automation = await runNewLeadAutomations(lead.id);
+  return json({ ok: true, id: lead.id, automation, message: "Thank you. An MR.HOME advisor will contact you within one business day." }, { status: 201 });
 });

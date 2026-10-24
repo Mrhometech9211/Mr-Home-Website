@@ -3,9 +3,9 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Search, Plus, ChevronLeft, ChevronRight, ArrowUp, ArrowDown, Download, ExternalLink, RefreshCw } from "lucide-react";
+import { Search, Plus, ChevronLeft, ChevronRight, ArrowUp, ArrowDown, Download, ExternalLink, RefreshCw, Eye, Edit2 } from "lucide-react";
 import { RESOURCES } from "@/lib/resources";
-import { cn, formatDateTime, formatPrice } from "@/lib/utils";
+import { AREA_UNIT_LABELS, cn, formatDateTime, formatPrice } from "@/lib/utils";
 import { api, Badge, Btn, Confirm, EmptyState, inputCls, statusTone, useToast } from "./ui";
 
 type Row = Record<string, unknown> & { id: number };
@@ -79,6 +79,12 @@ export function ResourceManager({ resourceKey, canWrite, canExport }: { resource
     const v = row[col];
     const f = fieldMap[col];
     if (col === "price") return <span className="font-medium">{formatPrice(v as string, row.currency as string)}</span>;
+    if (col === "areaValue") {
+      const unit = row.areaUnit ? AREA_UNIT_LABELS[String(row.areaUnit)] : null;
+      if (v == null || v === "") return <span className="text-mist">{unit && row.area ? `${row.area} ${unit}` : (row.area as string) || "—"}</span>;
+      return <span>{Number(v).toLocaleString()}{unit ? ` ${unit}` : ""}</span>;
+    }
+    if (col === "purpose" && typeof v === "string") return <Badge tone={v === "rent" ? "amber" : "green"}>{v === "rent" ? "For Rent" : "For Sale"}</Badge>;
     if (col === "status" && typeof v === "string") return <Badge tone={statusTone(v)}>{v.replace(/-/g, " ")}</Badge>;
     if (col === "role" && typeof v === "string") return <Badge tone={v === "SUPER_ADMIN" ? "slate" : v === "ADMIN" ? "green" : "neutral"}>{v.replace("_", " ")}</Badge>;
     if (typeof v === "boolean") return <Badge tone={v ? "green" : "neutral"}>{v ? (col === "archived" ? "Archived" : "Yes") : col === "archived" ? "Active" : "No"}</Badge>;
@@ -134,7 +140,34 @@ export function ResourceManager({ resourceKey, canWrite, canExport }: { resource
 
       {error && <div className="rounded-xl bg-red-50 px-4 py-3 text-[13px] text-red-700">{error} <button className="underline" onClick={load}>Retry</button></div>}
 
-      <div className="overflow-hidden rounded-2xl border border-ink/8 bg-white shadow-sm">
+      {/* Phones: compact cards instead of a 10-column table (no sideways scrolling). */}
+      <div className="space-y-2 md:hidden">
+        {loading && rows.length === 0 && Array.from({ length: 5 }).map((_, i) => <div key={i} className="skeleton h-16 rounded-2xl" />)}
+        {rows.map((row) => {
+          const primary = def.listColumns[0] ?? "name";
+          const rest = def.listColumns.slice(1);
+          return (
+            <Link key={row.id} href={rowHref(row)} className="block rounded-2xl border border-ink/8 bg-white p-4 shadow-sm active:bg-slate-50">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[14px] font-semibold text-ink">{cell(row, primary)}</p>
+                  <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-charcoal/70">
+                    {rest.slice(0, 3).map((c) => <span key={c} className="inline-flex items-center gap-1"><span className="text-mist">{fieldMap[c]?.label ?? c}:</span> {cell(row, c)}</span>)}
+                  </div>
+                </div>
+                <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-mist" />
+              </div>
+            </Link>
+          );
+        })}
+        {!loading && rows.length === 0 && !error && <div className="p-2"><EmptyState title={`No ${def.label.toLowerCase()} found`} description={`Create your first ${def.singular.toLowerCase()} to get started.`} /></div>}
+        <div className="flex items-center justify-between px-1 py-2 text-[12.5px] text-mist">
+          <span>Page {page} of {pages}</span>
+          <div className="flex gap-1"><Btn size="sm" variant="ghost" disabled={page <= 1} onClick={() => setPage(page - 1)}><ChevronLeft className="h-4 w-4" /> Prev</Btn><Btn size="sm" variant="ghost" disabled={page >= pages} onClick={() => setPage(page + 1)}>Next <ChevronRight className="h-4 w-4" /></Btn></div>
+        </div>
+      </div>
+
+      <div className="hidden overflow-hidden rounded-2xl border border-ink/8 bg-white shadow-sm md:block">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-[13px]">
             <thead className="bg-slate-50 text-[11px] uppercase tracking-wider text-mist">
@@ -153,7 +186,12 @@ export function ResourceManager({ resourceKey, canWrite, canExport }: { resource
                   {def.orderable && <td className="px-2 py-2.5" onClick={(e) => e.stopPropagation()}><div className="flex items-center gap-0.5 text-mist"><button type="button" disabled={i === 0 || !canWrite} onClick={() => move(row, -1)} className="rounded p-1 hover:bg-slate-100 disabled:opacity-30" aria-label="Move up"><ArrowUp className="h-3.5 w-3.5" /></button><button type="button" disabled={i === rows.length - 1 || !canWrite} onClick={() => move(row, 1)} className="rounded p-1 hover:bg-slate-100 disabled:opacity-30" aria-label="Move down"><ArrowDown className="h-3.5 w-3.5" /></button></div></td>}
                   {def.listColumns.map((c) => <td key={c} className="max-w-[260px] truncate px-3 py-2.5">{cell(row, c)}</td>)}
                   <td className="px-3 py-2.5 text-right" onClick={(e) => e.stopPropagation()}>
-                    {def.previewPath && <a href={def.previewPath(row)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[12px] text-mist hover:text-brand"><ExternalLink className="h-3.5 w-3.5" /> {row.published === false ? "Preview" : "View"}</a>}
+                    <div className="flex items-center justify-end gap-1">
+                      {def.previewPath && <a href={def.previewPath(row)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[12px] text-mist hover:text-brand"><ExternalLink className="h-3.5 w-3.5" /> {row.published === false ? "Preview" : "View"}</a>}
+                      {canWrite && !def.readOnly && def.previewPath && (
+                        <a href={`/admin/${resourceKey}?edit=${row.id}`} className="inline-flex items-center gap-1 text-[12px] text-mist hover:text-brand" title="Edit"><Edit2 className="h-3.5 w-3.5" /></a>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}

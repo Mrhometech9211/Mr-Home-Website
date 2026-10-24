@@ -25,6 +25,7 @@ export default async function LeadsPipelinePage() {
       interest: leads.interest,
       message: leads.message,
       status: leads.status,
+      ip: leads.ip,
       score: leads.score,
       source: leads.source,
       marketId: leads.marketId,

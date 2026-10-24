@@ -21,3 +21,23 @@ Thumbs.db
 
 # Freebuff workspace artifacts
 .freebuff/
+
+# Local runtime / secret material that must never be committed
+.ssh/
+.pglite-data*/
+.pglite-wal-salvage/
+*.pid
+.tmp-logs/
+*.tsbuildinfo
+*.bak
+
+# OpenNext
+.open-next
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example
+/freebuff-sites-build/
+/.open-next/
+/.wrangler/

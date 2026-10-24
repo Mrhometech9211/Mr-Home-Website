@@ -77,7 +77,7 @@ export default async function CityPage({ params }: { params: Params }) {
       </section>
 
       {city.stats && city.stats.length > 0 && (
-        <div className="relative z-10 mx-auto -mt-8 max-w-[1400px] px-4 sm:px-6">
+        <div className="relative z-10 mx-auto mt-8 max-w-[1400px] px-4 sm:px-6">
           <Reveal stagger="[data-s]" className="glass grid grid-cols-1 gap-px overflow-hidden rounded-[28px] shadow-card sm:grid-cols-3">
             {city.stats.map((s) => <div key={s.label} data-s className="px-6 py-6"><div className="text-[11px] uppercase tracking-wider text-mist">{s.label}</div><div className="mt-1 text-[24px] font-semibold tracking-tight text-brand">{s.value}</div></div>)}
           </Reveal>
