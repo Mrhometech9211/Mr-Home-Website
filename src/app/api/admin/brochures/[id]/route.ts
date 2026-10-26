@@ -5,8 +5,10 @@ import { ApiError, getIp, handle, json, readJson } from "@/lib/api";
 import { requireUser } from "@/lib/auth";
 import { audit } from "@/lib/audit";
 import { safeFilename } from "@/lib/media-validation";
+import { BROCHURE_MAX_BYTES, BROCHURE_MAX_LABEL } from "@/lib/upload-limits";
 
-const MAX_BROCHURE_BYTES = 60 * 1024 * 1024; // 60 MB
+// Legacy in-band replacement only; large brochures use direct-to-R2.
+const MAX_BROCHURE_BYTES = BROCHURE_MAX_BYTES;
 const PDF_MAGIC = [0x25, 0x50, 0x44, 0x46];
 
 function looksLikePdf(buf: Buffer): boolean {
@@ -60,7 +62,7 @@ export const PATCH = handle(async (req, ctx: Ctx) => {
     const form = await req.formData();
     const file = form.get("file");
     if (!(file instanceof File)) throw new ApiError(400, "No file provided");
-    if (file.size > MAX_BROCHURE_BYTES) throw new ApiError(413, "PDF too large (max 60 MB)");
+    if (file.size > MAX_BROCHURE_BYTES) throw new ApiError(413, `PDF too large (max ${BROCHURE_MAX_LABEL})`);
     const buf = Buffer.from(await file.arrayBuffer());
     if (!looksLikePdf(buf)) throw new ApiError(400, "Only valid PDF brochure files are accepted");
     patch.filename = `brochures/${Date.now().toString(36)}-${safeFilename(file.name)}.pdf`;

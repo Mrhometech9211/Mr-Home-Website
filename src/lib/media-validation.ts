@@ -1,3 +1,5 @@
+import { BROCHURE_MAX_BYTES } from "@/lib/upload-limits";
+
 export const ALLOWED: Record<string, { ext: string[]; kind: "image" | "video" | "document"; max: number }> = {
   "image/jpeg": { ext: ["jpg", "jpeg"], kind: "image", max: 10 * 1024 * 1024 },
   "image/png": { ext: ["png"], kind: "image", max: 10 * 1024 * 1024 },
@@ -7,7 +9,8 @@ export const ALLOWED: Record<string, { ext: string[]; kind: "image" | "video" | 
   "image/svg+xml": { ext: ["svg"], kind: "image", max: 1 * 1024 * 1024 },
   "video/mp4": { ext: ["mp4", "m4v"], kind: "video", max: 80 * 1024 * 1024 },
   "video/webm": { ext: ["webm"], kind: "video", max: 80 * 1024 * 1024 },
-  "application/pdf": { ext: ["pdf"], kind: "document", max: 60 * 1024 * 1024 },
+  // Brochures are PDFs and share this ceiling; both upload through R2 direct.
+  "application/pdf": { ext: ["pdf"], kind: "document", max: BROCHURE_MAX_BYTES },
 };
 
 const MAX_DIM = 8000;

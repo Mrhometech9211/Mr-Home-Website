@@ -65,7 +65,7 @@ export const GET = async (req: Request, ctx: Ctx) => {
 
     // R2 objects are released with a short-lived presigned GET redirect rather
     // than streamed through the function: Vercel caps response bodies (~4.5 MB)
-    // and 60 MB brochures silently failed in the browser. The signature is only
+    // and large brochures silently failed in the browser. The signature is only
     // minted after the lead gate above, so the gate still protects the file.
     if (row.storage === "r2" && row.storageKey) {
       try {

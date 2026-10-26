@@ -11,8 +11,9 @@ const nextConfig: NextConfig = {
     serverActions: { bodySizeLimit: "2mb" },
     // Next buffers the request body so the proxy.ts middleware layer can forward
     // it (see bodystreams.getCloneableBody). The default is 10 MiB which silently
-    // truncates any larger multipart upload — brochures go up to 60 MB and media
-    // files can be big, so raise the proxy body ceiling to match the API limits.
+    // truncates larger multipart uploads. Large brochures and media upload
+    // directly to R2; only the small legacy in-band fallback (≤4 MiB) goes
+    // through this proxy, so a modest ceiling is enough.
     proxyClientMaxBodySize: "64mb",
   },
   serverExternalPackages: ["pg", "@electric-sql/pglite", "pg-cloudflare"],

@@ -5,9 +5,11 @@ import { ApiError, getIp, handle, json } from "@/lib/api";
 import { requireUser } from "@/lib/auth";
 import { audit } from "@/lib/audit";
 import { safeFilename } from "@/lib/media-validation";
+import { BROCHURE_MAX_BYTES, BROCHURE_MAX_LABEL } from "@/lib/upload-limits";
 import { brochureExistsForProject } from "@/lib/brochure-token";
 
-const MAX_BROCHURE_BYTES = 60 * 1024 * 1024; // 60 MB
+// Legacy in-band upload only (small files); large brochures use direct-to-R2.
+const MAX_BROCHURE_BYTES = BROCHURE_MAX_BYTES;
 
 const PDF_MAGIC = [0x25, 0x50, 0x44, 0x46]; // "%PDF"
 
@@ -72,7 +74,7 @@ export const POST = handle(async (req) => {
   const projectId = Number(projectRaw);
   if (!(file instanceof File)) throw new ApiError(400, "No file provided");
   if (!Number.isInteger(projectId) || projectId <= 0) throw new ApiError(400, "A valid project is required");
-  if (file.size > MAX_BROCHURE_BYTES) throw new ApiError(413, "PDF too large (max 60 MB)");
+  if (file.size > MAX_BROCHURE_BYTES) throw new ApiError(413, `PDF too large (max ${BROCHURE_MAX_LABEL})`);
   const buf = Buffer.from(await file.arrayBuffer());
   // Content sniffing: type declarations can be spoofed, so verify PDF magic bytes.
   if (!looksLikePdf(buf)) throw new ApiError(400, "Only valid PDF brochure files are accepted");

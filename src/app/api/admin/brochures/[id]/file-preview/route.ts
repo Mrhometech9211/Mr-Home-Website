@@ -25,7 +25,7 @@ export const GET = handle(async (_req, ctx: Ctx) => {
   const row = rows[0];
   if (!row) throw new ApiError(404, "Brochure not found");
 
-  // R2 objects redirect to a short-lived inline URL: streaming a 60 MB PDF
+  // R2 objects redirect to a short-lived inline URL: streaming a large PDF
   // through the function would exceed Vercel's response-body limit.
   if (row.storage === "r2" && row.storageKey) {
     try {

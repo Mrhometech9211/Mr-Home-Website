@@ -40,6 +40,7 @@ import {
   presignPut,
 } from "@/lib/r2";
 import { ALLOWED, imageDimensions, sniff, svgHasActiveContent } from "@/lib/media-validation";
+import { BROCHURE_MAX_BYTES, BROCHURE_MAX_LABEL } from "@/lib/upload-limits";
 
 /** How long a `pending` row may exist before the sweeper cancels it. */
 const PENDING_TTL_MS = 24 * 60 * 60 * 1000;
@@ -155,8 +156,8 @@ export async function initBrochureUpload(meId: number, projectId: number, req: I
   if (!filename || filename.length > 300) throw new ApiError(400, "A valid file name is required");
   if (!/\.pdf$/i.test(filename) || contentType !== "application/pdf") throw new ApiError(400, "Only PDF brochures are accepted");
   if (!Number.isFinite(size) || size <= 0) throw new ApiError(400, "File size is required");
-  if (size > Math.min(ALLOWED["application/pdf"].max, R2_SINGLE_PUT_MAX)) {
-    throw new ApiError(413, "PDF exceeds the 60MB brochure limit");
+  if (size > Math.min(BROCHURE_MAX_BYTES, R2_SINGLE_PUT_MAX)) {
+    throw new ApiError(413, `PDF exceeds the ${BROCHURE_MAX_LABEL} brochure limit`);
   }
   const key = brochureKey(filename);
   assertSafeKey(key);

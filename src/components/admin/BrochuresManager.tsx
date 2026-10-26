@@ -6,6 +6,7 @@ import { deferInitialLoad } from "@/lib/defer-load";
 import { FileText, Loader2, Pencil, Trash2, Download } from "lucide-react";
 import { cn, formatDateTime } from "@/lib/utils";
 import { directUpload } from "@/lib/direct-upload-client";
+import { BROCHURE_MAX_BYTES, BROCHURE_MAX_LABEL } from "@/lib/upload-limits";
 import { api, Badge, Btn, Confirm, inputCls, useToast } from "./ui";
 
 type Row = {
@@ -196,7 +197,7 @@ export function BrochuresManager({ canWrite, projects }: { canWrite: boolean; pr
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <h2 className="text-[15px] font-semibold text-ink">Upload a brochure</h2>
-              <p className="mt-1 text-[13px] text-charcoal/70">Attach a brochure to a project (PDF up to 60 MB). Visitors download it after submitting name, phone, city and country — each download is recorded as a lead.</p>
+              <p className="mt-1 text-[13px] text-charcoal/70">Attach a brochure to a project (PDF up to {BROCHURE_MAX_LABEL}). Visitors download it after submitting name, phone, city and country — each download is recorded as a lead.</p>
             </div>
             <Btn variant="secondary" size="sm" loading={testState.running} onClick={() => void testStorage()}>Test storage</Btn>
           </div>
@@ -235,8 +236,8 @@ export function BrochuresManager({ canWrite, projects }: { canWrite: boolean; pr
                   toast("Select a project first", "error");
                   return;
                 }
-                if (f.size > 60 * 1024 * 1024) {
-                  toast(`File is ${fmtSize(f.size)} — the maximum is 60 MB`, "error");
+                if (f.size > BROCHURE_MAX_BYTES) {
+                  toast(`File is ${fmtSize(f.size)} — the maximum is ${BROCHURE_MAX_LABEL}`, "error");
                   return;
                 }
                 void upload(pid, f);
@@ -352,8 +353,8 @@ export function BrochuresManager({ canWrite, projects }: { canWrite: boolean; pr
                             input.onchange = () => {
                               const f = input.files?.[0];
                               if (!f || !r.projectId) return;
-                              if (f.size > 60 * 1024 * 1024) {
-                                toast(`File is ${fmtSize(f.size)} — the maximum is 60 MB`, "error");
+                              if (f.size > BROCHURE_MAX_BYTES) {
+                                toast(`File is ${fmtSize(f.size)} — the maximum is ${BROCHURE_MAX_LABEL}`, "error");
                                 return;
                               }
                               void upload(r.projectId, f, r);
