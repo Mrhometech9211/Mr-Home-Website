@@ -49,6 +49,24 @@ const schema = z.object({
     formCtaHref: str(300).refine((v) => !v || isSafeHref(v), "CTA link must be an internal path or a https:// URL"),
     benefits: z.array(z.object({ title: str(120).optional(), body: str(600).optional() })).max(8),
     steps: z.array(z.object({ title: str(120).optional(), body: str(600).optional() })).max(10),
+    // Per-field toggles for the public List My Property form. This key was
+    // previously absent, so Zod silently stripped the admin's toggles on save
+    // and the public form never changed — the "field changes don't appear" bug.
+    contactFields: z
+      .array(
+        z.enum([
+          "email",
+          "phone",
+          "preferredLanguage",
+          "propertyAddress",
+          "propertyType",
+          "purpose",
+          "bedrooms",
+          "market",
+          "message",
+        ]),
+      )
+      .max(9),
   }),
 }).partial();
 

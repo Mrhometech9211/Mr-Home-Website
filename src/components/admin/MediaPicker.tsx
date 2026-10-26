@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { Upload, Search, FileText, Film } from "lucide-react";
 import { api, Btn, inputCls, Modal, useToast } from "./ui";
+import { directUpload } from "@/lib/direct-upload-client";
 import { cn } from "@/lib/utils";
 
 export type MediaRow = { id: number; url: string; filename: string; originalName: string; mimeType: string; kind: string; size: number; width: number | null; height: number | null; alt: string | null; caption: string | null; createdAt: string };
@@ -17,16 +18,19 @@ export function MediaThumb({ m, className }: { m: MediaRow; className?: string }
 export function useMediaUpload() {
   const { toast } = useToast();
   const [uploading, setUploading] = useState(false);
-  const upload = useCallback(async (files: FileList | File[], extra?: Record<string, string>) => {
+  const upload = useCallback(async (files: FileList | File[], _extra?: Record<string, string>) => {
     setUploading(true);
     const done: MediaRow[] = [];
     for (const f of Array.from(files)) {
-      const fd = new FormData();
-      fd.append("file", f);
-      for (const [k, v] of Object.entries(extra ?? {})) fd.append(k, v);
       try {
-        const r = await api<{ data: MediaRow }>("/api/admin/media", { method: "POST", body: fd });
-        done.push(r.data);
+        // Direct-to-R2 presigned upload (bypasses server body limits);
+        // the helper transparently falls back to the legacy multipart
+        // storing the file in Postgres when R2 is not configured.
+        const { id } = await directUpload("media", f);
+        if (id) {
+          const d = await api<{ data: MediaRow }>(`/api/admin/media/${id}`);
+          done.push(d.data);
+        }
       } catch (e) { toast(`${f.name}: ${e instanceof Error ? e.message : "upload failed"}`, "error"); }
     }
     setUploading(false);

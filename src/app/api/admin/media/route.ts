@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, ilike, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, ne, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import { media } from "@/db/schema";
 import { ApiError, getIp, handle, json, parseIntParam } from "@/lib/api";
@@ -20,6 +20,8 @@ export const GET = handle(async (req) => {
   const conds: SQL[] = [];
   if (q) conds.push(or(ilike(media.filename, `%${q}%`), ilike(media.alt, `%${q}%`), ilike(media.caption, `%${q}%`))!);
   if (kind) conds.push(eq(media.kind, kind));
+  // Never list `pending` upload sessions — their object is not yet verified in R2.
+  conds.push(ne(media.status, "pending"));
   const where = conds.length ? and(...conds) : undefined;
   const sortCol = sort === "size" ? media.size : sort === "filename" ? media.filename : media.createdAt;
   const [{ count }] = await db.select({ count: sql<number>`count(*)::int` }).from(media).where(where);

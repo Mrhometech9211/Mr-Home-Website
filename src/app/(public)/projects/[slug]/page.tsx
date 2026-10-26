@@ -94,8 +94,21 @@ export default async function ProjectPage({ params }: { params: Params }) {
                   Download Brochure), then the live-converted price, then actions. */}
               <ProjectPricing price={project.price} currency={project.currency} roi={project.roi}>
                 <div className="mt-5 flex flex-col gap-2">
-                  {brochure?.allowDownload && <BrochureGate projectSlug={project.slug} projectName={project.name} />}
-                  <Button3D href="#inquire" variant="primary">Request Details</Button3D>
+                  {brochure?.allowDownload ? (
+                    <BrochureGate projectSlug={project.slug} projectName={project.name} />
+                  ) : (
+                    <button
+                      type="button"
+                      disabled
+                      className="inline-flex h-12 w-full cursor-not-allowed items-center justify-center gap-2 rounded-full border border-white/20 bg-white/5 px-6 text-[15px] font-medium text-white/55 backdrop-blur"
+                      title="The brochure will be available soon — request details in the meantime."
+                    >
+                      <Download className="h-4 w-4" />
+                      Brochure coming soon
+                    </button>
+                  )}
+                  {/* Routed to the public Contact page with the project preselected. */}
+                  <Button3D href={`/contact?project=${project.slug}`} variant="primary">Request Details</Button3D>
                   <Button3D href={wa} variant="whatsapp" icon="whatsapp" external>WhatsApp Advisor</Button3D>
                 </div>
               </ProjectPricing>

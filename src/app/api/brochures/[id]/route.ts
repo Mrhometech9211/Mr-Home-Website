@@ -34,6 +34,9 @@ export const GET = async (req: Request, ctx: Ctx) => {
         originalName: brochures.originalName,
         mimeType: brochures.mimeType,
         data: brochures.data,
+        storage: brochures.storage,
+        storageKey: brochures.storageKey,
+        status: brochures.status,
         allowDownload: brochures.allowDownload,
         downloads: brochures.downloads,
       })
@@ -42,7 +45,10 @@ export const GET = async (req: Request, ctx: Ctx) => {
       .where(eq(brochures.id, id))
       .limit(1);
 
-    if (!row || !row.data) return json({ error: "Brochure not found" }, { status: 404 });
+    if (!row) return json({ error: "Brochure not found" }, { status: 404 });
+    // Ready rows only — an in-flight direct-to-R2 upload never releases bytes.
+    if (row.status && row.status !== "ready") return json({ error: "Brochure not found" }, { status: 404 });
+    if (!row.data && row.storage !== "r2") return json({ error: "Brochure not found" }, { status: 404 });
     if (!row.allowDownload) return json({ error: "Brochure downloads are currently unavailable" }, { status: 403 });
 
     // The file must still belong to an active published project — prevents
@@ -59,8 +65,17 @@ export const GET = async (req: Request, ctx: Ctx) => {
 
     await db.update(brochures).set({ downloads: row.downloads + 1, updatedAt: new Date() }).where(eq(brochures.id, id));
 
-    const bytes = new Uint8Array(row.data as unknown as ArrayBuffer);
-    return new Response(bytes, {
+    // Storage resolution: R2 object first, legacy Postgres bytea second.
+    let bytes: Uint8Array;
+    if (row.storage === "r2" && row.storageKey) {
+      const { getR2Buffer } = await import("@/lib/r2");
+      const buffer = await getR2Buffer(row.storageKey);
+      if (!buffer) return json({ error: "Brochure not found" }, { status: 404 });
+      bytes = new Uint8Array(buffer);
+    } else {
+      bytes = new Uint8Array(row.data as unknown as ArrayBuffer);
+    }
+    return new Response(bytes as unknown as BodyInit, {
       status: 200,
       headers: {
         "Content-Type": "application/pdf",

@@ -18,7 +18,7 @@
  * fireNotification for its "Send test notification" button.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { BellOff, BellRing } from "lucide-react";
 
@@ -158,9 +158,21 @@ const TICKER_SRC = `let t=null;self.onmessage=(e)=>{const d=e.data||{};if(d.stop
 
 export function LeadNotifier() {
   const router = useRouter();
-  const [permission, setPermission] = useState<"unsupported" | NotificationPermission>(() =>
-    typeof Notification === "undefined" ? "unsupported" : Notification.permission,
+  // Start at a server/client-stable value and read the real browser permission
+  // via useSyncExternalStore — reading Notification.permission directly during
+  // hydration rendered a different first paint than the server HTML and
+  // crashed hydration. Handles hydration by using the server snapshot on the
+  // first client render.
+  const emptySubscribe = useCallback(() => () => {}, []);
+  const browserPermission = useSyncExternalStore(
+    emptySubscribe,
+    () => (typeof Notification === "undefined" ? ("unsupported" as const) : Notification.permission),
+    () => "unsupported" as const,
   );
+  // requestPermission() updates Notification.permission globally, but the
+  // button's own result is applied immediately so the UI flips right away.
+  const [requestedPermission, setRequestedPermission] = useState<"unsupported" | NotificationPermission | null>(null);
+  const permission = requestedPermission ?? browserPermission;
   // In-page fallback: leads are still announced visibly when the OS toast
   // cannot be shown (permission not granted / API unsupported).
   const [inPage, setInPage] = useState<{ name: string; source: string | null } | null>(null);
@@ -287,7 +299,7 @@ export function LeadNotifier() {
           onClick={async () => {
             if (typeof Notification === "undefined") return;
             const res = await Notification.requestPermission();
-            setPermission(res);
+            setRequestedPermission(res);
             if (res === "granted") void pollRef.current();
           }}
           className="fixed bottom-4 right-4 z-[80] inline-flex items-center gap-2 rounded-full bg-ink px-4 py-2.5 text-[12.5px] font-semibold text-white shadow-lg transition hover:bg-ink/85"

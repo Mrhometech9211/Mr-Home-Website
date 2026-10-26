@@ -11,7 +11,9 @@ function securityHeaders(res: NextResponse, isAdmin: boolean) {
     "img-src 'self' data: blob: https:",
     "media-src 'self' blob: https://res.cloudinary.com https:",
     "font-src 'self' data:",
-    "connect-src 'self' https:",
+    // Direct-to-R2 browser PUTs go to the storage endpoint (https in prod).
+    // Dev additionally allows loopback http so the local R2 emulator works.
+    "connect-src 'self' https:" + (isProd ? "" : " http://127.0.0.1:* http://localhost:*"),
     "frame-src https://maps.google.com https://www.google.com https://www.youtube.com https://player.vimeo.com",
     "worker-src 'self' blob:",
     "object-src 'none'",

@@ -44,9 +44,29 @@ export function ListPropertyForm({ markets, lypFields, compact = false }: Props)
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(Object.fromEntries(fd.entries())),
       });
-      const out = (await res.json()) as { ok?: boolean; message?: string; error?: string; issues?: Record<string, string> };
+      const out = (await res.json()) as {
+        ok?: boolean;
+        message?: string;
+        error?: string;
+        issues?: { path: string; message: string }[] | Record<string, string>;
+      };
       if (!res.ok || out.error) {
-        setState({ status: "error", message: out.error || out.message || "Something went wrong. Please try again.", issues: out.issues });
+        // The API may return field issues as an array ({path,message}) or a
+        // map — normalise either into the record the form renders.
+        const issues: Record<string, string> = {};
+        if (Array.isArray(out.issues)) {
+          for (const i of out.issues) if (i?.path) issues[i.path] = i.message;
+        } else if (out.issues && typeof out.issues === "object") {
+          Object.assign(issues, out.issues);
+        }
+        setState({
+          status: "error",
+          message:
+            out.error === "Validation failed" && issues.propertyAddress
+              ? issues.propertyAddress
+              : out.error || out.message || "Something went wrong. Please try again.",
+          issues,
+        });
         return;
       }
       setState({ status: "success", message: out.message || "Thank you. Our listings team will contact you shortly." });

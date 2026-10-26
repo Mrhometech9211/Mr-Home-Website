@@ -14,9 +14,12 @@ export async function generateMetadata(): Promise<Metadata> {
   return buildMetadata("/contact", { title: "Contact — Let’s Find the Right Property for You" });
 }
 
-export default async function ContactPage({ searchParams }: { searchParams: Promise<{ market?: string; city?: string }> }) {
+export default async function ContactPage({ searchParams }: { searchParams: Promise<{ market?: string; city?: string; project?: string }> }) {
   const sp = await searchParams;
   const [s, markets, marketCitiesMap, projects, sections] = await Promise.all([getSettings(), getPublishedMarkets(), getPublishedMarketCities(), getPublishedProjects(), getSections("contact")]);
+  // "Request Details" buttons deep-link here with ?project=<slug>; preselect
+  // that project (and its market) so the visitor never re-types the context.
+  const preProject = sp.project ? projects.find((p) => p.slug === sp.project && p.published && !p.archived) : undefined;
   const hero = sections.find((x) => x.key === "hero");
   const wa = buildWhatsAppLink(s.whatsapp, s.whatsappDefaultMessage);
   return (
@@ -50,7 +53,7 @@ export default async function ContactPage({ searchParams }: { searchParams: Prom
             <ul className="mt-8 flex gap-2">{s.socialLinks.filter((l) => l.url).map((l) => <li key={l.platform}><a href={l.url} target="_blank" rel="noopener noreferrer" aria-label={l.platform} className="flex h-10 w-10 items-center justify-center rounded-full border border-ink/10 bg-white text-ink hover:border-brand hover:text-brand"><SocialIcon platform={l.platform} className="h-4 w-4" /></a></li>)}</ul>
           </Reveal>
           <Reveal className="lg:col-span-8" y={50}>
-            <InquiryForm fields={s.contactFields} markets={markets.map((m) => ({ id: m.id, name: m.name, slug: m.slug, flag: m.flag, cities: marketCitiesMap[m.id] }))} projects={projects.map((p) => ({ id: p.id, name: p.name, marketId: p.marketId }))} budgetOptions={s.budgetOptions} interestOptions={s.interestOptions} cityFieldEnabled={s.cityFieldEnabled} customBudgetEnabled={s.customBudgetEnabled} defaultMarketId={markets.find((m) => m.slug === sp.market)?.id ?? null} source="contact-page" />
+            <InquiryForm fields={s.contactFields} markets={markets.map((m) => ({ id: m.id, name: m.name, slug: m.slug, flag: m.flag, cities: marketCitiesMap[m.id] }))} projects={projects.map((p) => ({ id: p.id, name: p.name, marketId: p.marketId }))} budgetOptions={s.budgetOptions} interestOptions={s.interestOptions} cityFieldEnabled={s.cityFieldEnabled} customBudgetEnabled={s.customBudgetEnabled} defaultMarketId={preProject?.marketId ?? markets.find((m) => m.slug === sp.market)?.id ?? null} defaultProjectId={preProject?.id ?? null} source="contact-page" />
             {s.mapUrl && <div className="mt-6 overflow-hidden rounded-3xl border border-ink/8 shadow-soft"><iframe title="Office map" src={`https://maps.google.com/maps?q=${encodeURIComponent(s.address)}&z=14&output=embed`} className="h-[300px] w-full" loading="lazy" /></div>}
           </Reveal>
         </div>

@@ -16,7 +16,7 @@ export function TrendChart({ data, days }: { data: { day: string; count: number 
         <defs><linearGradient id="tg" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="#1f8f3a" stopOpacity="0.25" /><stop offset="100%" stopColor="#1f8f3a" stopOpacity="0" /></linearGradient></defs>
         <path d={area} fill="url(#tg)" />
         <path d={path} fill="none" stroke="#1f8f3a" strokeWidth="2" strokeLinejoin="round" />
-        {pts.map((p, i) => series[i].count > 0 && <circle key={i} cx={p[0]} cy={p[1]} r="3" fill="#1f8f3a"><title>{series[i].day}: {series[i].count}</title></circle>)}
+        {pts.map((p, i) => series[i].count > 0 && <circle key={i} cx={p[0]} cy={p[1]} r="3" fill="#1f8f3a"><title>{`${series[i].day}: ${series[i].count}`}</title></circle>)}
       </svg>
       <div className="flex justify-between text-[10.5px] text-mist"><span>{series[0].day}</span><span>{mid.day}</span><span>{series[series.length - 1].day}</span></div>
     </div>

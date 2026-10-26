@@ -247,10 +247,16 @@ export const media = pgTable(
     alt: text("alt"),
     caption: text("caption"),
     data: bytea("data"),
+    /** Where the binary lives: "db" (legacy bytea) or "r2" (object store). */
+    storage: text("storage").notNull().default("db"),
+    /** R2 object key when storage = "r2"; media delivery resolves through it. */
+    storageKey: text("storage_key"),
+    /** pending = presigned upload started; ready = key verified in R2. */
+    status: text("status").notNull().default("ready"),
     uploadedBy: integer("uploaded_by"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("media_kind_idx").on(t.kind)],
+  (t) => [index("media_kind_idx").on(t.kind), index("media_status_idx").on(t.status)],
 );
 
 export const leads = pgTable(
@@ -459,13 +465,18 @@ export const brochures = pgTable(
     mimeType: text("mime_type").notNull().default("application/pdf"),
     size: integer("size").notNull(),
     data: bytea("data"),
+    /** "db" (legacy bytea) or "r2" (object-store binary via storage_key). */
+    storage: text("storage").notNull().default("db"),
+    storageKey: text("storage_key"),
+    /** pending = presigned upload started; ready = object verified in R2. */
+    status: text("status").notNull().default("ready"),
     allowDownload: boolean("allow_download").notNull().default(true),
     downloads: integer("downloads").notNull().default(0),
     uploadedBy: integer("uploaded_by").references(() => users.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("brochures_project_idx").on(t.projectId)],
+  (t) => [index("brochures_project_idx").on(t.projectId), index("brochures_status_idx").on(t.status)],
 );
 
 export const faqs = pgTable("faqs", {

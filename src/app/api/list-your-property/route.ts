@@ -1,11 +1,12 @@
 import { z } from "zod";
 import { and, eq, gt } from "drizzle-orm";
 import { db } from "@/db";
-import { leadActivities, leads, markets } from "@/db/schema";
+import { leadActivities, leads, markets, siteSettings } from "@/db/schema";
 import { getIp, handle, json, readJson } from "@/lib/api";
 import { rateLimit } from "@/lib/rate-limit";
 import { sanitizeText } from "@/lib/utils";
 import { LISTING_LANGUAGES, LISTING_PROPERTY_TYPES, LISTING_PURPOSES } from "@/lib/listing-options";
+import { mergeSettings } from "@/lib/settings-types";
 
 /**
  * Phase 3 — Property Listing Leads.
@@ -18,16 +19,18 @@ const purposeEnum = LISTING_PURPOSES.map((p) => p.value) as ["sell" | "rent" | "
 
 /**
  * Field-level validation only fires for fields the admin has kept visible —
- * toggled-off fields are simply omitted, not rejected.
+ * toggled-off fields are simply omitted, not rejected. `propertyAddress` is
+ * required only while the admin keeps it on the form (see the post-parse
+ * check below); all other structural toggles stay optional.
  */
 const optionalEmpty = (s: z.ZodString) => s.optional().or(z.literal(""));
 const schema = z.object({
   name: z.string().trim().min(2, "Please enter your full name").max(120),
-  email: optionalEmpty(z.string().trim().toLowerCase()).refine((v) => !v || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v), "Please enter a valid email"),
+  email: optionalEmpty(z.string().trim().toLowerCase()).refine((v) => !v || /^\S+@\S+\.\S+$/.test(v), "Please enter a valid email"),
   phone: optionalEmpty(z.string().trim()).refine((v) => !v || (v.length >= 6 && v.length <= 40), "Please enter a phone number")
     .refine((v) => !v || /^\+?[0-9 ()\-]{6,40}$/.test(v), "Phone must contain a country code, e.g. +971 50 123 4567"),
   preferredLanguage: z.string().trim().max(60).optional().or(z.literal("")),
-  propertyAddress: z.string().trim().min(4, "Please enter the property address").max(300),
+  propertyAddress: optionalEmpty(z.string().trim()),
   propertyType: z.enum(propertyTypeEnum).optional(),
   purpose: z.enum(purposeEnum).optional(),
   bedrooms: z.union([z.coerce.number().int().min(0).max(20), z.literal("")]).optional(),
@@ -50,6 +53,20 @@ export const POST = handle(async (req) => {
   }
   const data = schema.parse(body);
 
+  // Honour the admin's per-field toggles: a field that is switched OFF in
+  // Settings → List Your Property must not be required here either. Only the
+  // required-when-visible guard needs runtime data (the schema above is static).
+  const cfg = await db.select({ data: siteSettings.data }).from(siteSettings).where(eq(siteSettings.id, 1)).limit(1);
+  const lypFields = new Set(mergeSettings(cfg[0]?.data).listYourProperty.contactFields);
+  const visible = (f: string) => lypFields.has(f);
+  const address = typeof data.propertyAddress === "string" ? data.propertyAddress : "";
+  if (address.length === 0 && visible("propertyAddress")) {
+    return json({ error: "Validation failed", issues: [{ path: "propertyAddress", message: "Please enter the property address" }] }, { status: 400 });
+  }
+  if (address.length > 0 && address.length < 4) {
+    return json({ error: "Validation failed", issues: [{ path: "propertyAddress", message: "Please enter a more complete property address" }] }, { status: 400 });
+  }
+
   const marketId = typeof data.marketId === "number" ? data.marketId : null;
   if (marketId) {
     const m = await db.select({ id: markets.id }).from(markets).where(eq(markets.id, marketId)).limit(1);
@@ -70,7 +87,7 @@ export const POST = handle(async (req) => {
     dup.map(async (d) => {
       const rows = await db.select({ details: leads.details }).from(leads).where(eq(leads.id, d.id)).limit(1);
       const details = rows[0]?.details as Record<string, unknown> | null | undefined;
-      return String(details?.propertyAddress ?? "").toLowerCase() === data.propertyAddress.trim().toLowerCase();
+      return String(details?.propertyAddress ?? "").toLowerCase() === (data.propertyAddress ?? "").trim().toLowerCase();
     }),
   );
   if (dups.some(Boolean)) {
@@ -79,7 +96,7 @@ export const POST = handle(async (req) => {
 
   const details = {
     preferredLanguage: sanitizeText(data.preferredLanguage || "", 60) || null,
-    propertyAddress: sanitizeText(data.propertyAddress, 300),
+    propertyAddress: sanitizeText(address || "Not provided", 300),
     propertyType: data.propertyType || "Apartment",
     purpose: data.purpose || "sell",
     bedrooms: data.bedrooms === "" || data.bedrooms == null ? null : data.bedrooms,

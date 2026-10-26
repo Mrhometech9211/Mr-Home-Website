@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { motion } from "framer-motion";
 import { deferInitialLoad } from "@/lib/defer-load";
 import { FileText, Loader2, Pencil, Trash2, Download } from "lucide-react";
 import { cn, formatDateTime } from "@/lib/utils";
+import { directUpload } from "@/lib/direct-upload-client";
 import { api, Badge, Btn, Confirm, inputCls, useToast } from "./ui";
 
 type Row = {
@@ -41,6 +43,8 @@ export function BrochuresManager({ canWrite, projects }: { canWrite: boolean; pr
   const [previewRow, setPreviewRow] = useState<Row | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const newProjectRef = useRef<HTMLSelectElement>(null);
+  /** Live upload state: pct is null on the legacy path (no byte events). */
+  const [progress, setProgress] = useState<{ name: string; pct: number | null; total: number } | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -55,30 +59,44 @@ export function BrochuresManager({ canWrite, projects }: { canWrite: boolean; pr
   };
   useEffect(() => deferInitialLoad(load), []);
 
-  /* Upload: multipart POST. On failure the previous brochure stays untouched. */
+  /* Upload: presigned direct-to-R2 (falls back to the legacy multipart POST
+   when R2 is off). On failure the previous brochure stays untouched. */
   const upload = async (projectId: number, file: File, replaceRow?: Row) => {
-    const fd = new FormData();
-    fd.append("file", file);
-    fd.append("projectId", String(projectId));
+    const replace = async (newId: number) => {
+      // Swap the file on the existing row: same URL, history retained.
+      await api(`/api/admin/brochures/${replaceRow!.id}`, { method: "PATCH", body: JSON.stringify({ newBrochureId: newId }) });
+    };
     if (replaceRow) {
       setBusyId(replaceRow.id);
+      setProgress({ name: file.name, pct: null, total: file.size });
       try {
-        await api(`/api/admin/brochures/${replaceRow.id}`, { method: "PATCH", body: fd });
+        const { id } = await directUpload("brochure", file, {
+          projectId,
+          onProgress: (pct) => setProgress((p) => (p && p.total === file.size ? { ...p, pct } : p)),
+        });
+        await replace(id);
         toast("Brochure replaced");
         await load();
       } catch (e) {
         toast(e instanceof Error ? e.message : "Replacement failed — previous brochure preserved", "error");
       } finally {
         setBusyId(null);
+        setProgress(null);
       }
       return;
     }
+    setProgress({ name: file.name, pct: null, total: file.size });
     try {
-      await api("/api/admin/brochures", { method: "POST", body: fd });
+      await directUpload("brochure", file, {
+        projectId,
+        onProgress: (pct) => setProgress((p) => (p && p.total === file.size ? { ...p, pct } : p)),
+      });
       toast("Brochure uploaded");
       await load();
     } catch (e) {
       toast(e instanceof Error ? e.message : "Upload failed", "error");
+    } finally {
+      setProgress(null);
     }
   };
 
@@ -154,6 +172,32 @@ export function BrochuresManager({ canWrite, projects }: { canWrite: boolean; pr
               disabled={!uploadProjectId}
             />
           </div>
+          {/* Live upload progress — real percentages and MBs flow from the
+              browser's presigned-PUT XHR events; the legacy DB-storage path
+              has no byte events, so it shows a moving indeterminate bar. */}
+          {progress && (
+            <div className="mt-4 rounded-2xl border border-brand/30 bg-brand/5 p-4" role="status" aria-live="polite">
+              <div className="flex items-center justify-between gap-4 text-[13px]">
+                <span className="flex min-w-0 items-center gap-2 font-medium text-ink">
+                  <Loader2 className="h-4 w-4 shrink-0 animate-spin text-brand" />
+                  <span className="truncate">{progress.pct === 100 ? "Finalising upload…" : progress.name}</span>
+                </span>
+                <span className="shrink-0 font-semibold tabular-nums text-brand">{progress.pct === null ? "Uploading…" : `${progress.pct}%`}</span>
+              </div>
+              <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-ink/10">
+                <motion.div
+                  className={"h-full rounded-full bg-brand " + (progress.pct === null ? "animate-pulse w-1/3" : "")}
+                  animate={{ width: progress.pct === null ? "33%" : `${progress.pct}%` }}
+                  transition={{ ease: "linear", duration: 0.2 }}
+                />
+              </div>
+              <p className="mt-1.5 text-[12px] text-charcoal/70">
+                {progress.pct === null
+                  ? `Uploading ${fmtSize(progress.total)} (no byte-level progress available)`
+                  : `${fmtSize((progress.total * progress.pct) / 100)} of ${fmtSize(progress.total)}`}
+              </p>
+            </div>
+          )}
         </div>
       )}
 

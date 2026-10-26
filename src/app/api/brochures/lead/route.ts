@@ -47,7 +47,8 @@ export const POST = handle(async (req) => {
   const [brochure] = await db
     .select({ id: brochures.id, allowDownload: brochures.allowDownload })
     .from(brochures)
-    .where(eq(brochures.projectId, project.id))
+    // Ready rows only: an in-flight direct-to-R2 upload can never release a file.
+    .where(and(eq(brochures.projectId, project.id), eq(brochures.status, "ready")))
     .orderBy(desc(brochures.createdAt))
     .limit(1);
   if (!brochure) {

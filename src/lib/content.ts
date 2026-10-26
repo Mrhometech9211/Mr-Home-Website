@@ -461,10 +461,12 @@ export const getPublishedBuilderPages = cache(async (): Promise<BuilderPage[]> =
 export const getActiveBrochureForProject = cache(async (projectId: number) => {
   await initDb();
   const { brochures } = await import("@/db/schema");
+  // Ready rows only — an in-flight direct-to-R2 upload must not flip the public
+  // "Download Brochure" button on until the object is actually verified.
   const rows = await db
     .select({ id: brochures.id, allowDownload: brochures.allowDownload })
     .from(brochures)
-    .where(eq(brochures.projectId, projectId))
+    .where(and(eq(brochures.projectId, projectId), eq(brochures.status, "ready")))
     .orderBy(desc(brochures.createdAt))
     .limit(1);
   return rows[0] ?? null;

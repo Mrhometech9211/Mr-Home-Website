@@ -62,12 +62,40 @@ export const PATCH = handle(async (req, ctx: Ctx) => {
     patch.mimeType = "application/pdf";
     patch.size = file.size;
     patch.data = buf;
+    // The bytes now live in Postgres — a legacy replace must clear the R2
+    // pointer or the delivery route would keep serving the OLD object.
+    patch.storage = "db";
+    patch.storageKey = null;
     patch.uploadedBy = me.id;
     const ad = form.get("allowDownload");
     if (ad !== null) patch.allowDownload = String(ad) !== "false";
+    if (prior.storage === "r2" && prior.storageKey) {
+      const { deleteR2Object } = await import("@/lib/r2");
+      await deleteR2Object(prior.storageKey);
+    }
   } else {
     const body = await readJson<Record<string, unknown>>(req);
     if (typeof body.allowDownload === "boolean") patch.allowDownload = body.allowDownload;
+    // Replace-with-a-fresh-direct-upload: the admin UI uploads the new PDF via
+    // the presigned direct-to-R2 flow, then points the existing row at it.
+    if (typeof body.newBrochureId === "number" && Number.isInteger(body.newBrochureId) && body.newBrochureId > 0) {
+      const [fresh] = await db.select().from(brochures).where(eq(brochures.id, body.newBrochureId)).limit(1);
+      if (!fresh || fresh.status !== "ready" || fresh.projectId !== prior.projectId) {
+        throw new ApiError(400, "Replacement brochure is not a verified PDF for this project");
+      }
+      patch.filename = fresh.filename;
+      patch.originalName = fresh.originalName;
+      patch.mimeType = fresh.mimeType;
+      patch.size = fresh.size;
+      patch.storage = fresh.storage;
+      patch.storageKey = fresh.storageKey ?? null;
+      patch.uploadedBy = me.id;
+      if (prior.storage === "r2" && prior.storageKey && prior.storageKey !== (fresh.storageKey ?? null)) {
+        // Drop the previous binary by honouring legacy vs R2 storage correctly.
+        const { deleteR2Object } = await import("@/lib/r2");
+        await deleteR2Object(prior.storageKey);
+      }
+    }
   }
 
   const [row] = await db.update(brochures).set(patch).where(eq(brochures.id, id)).returning(listCols);
@@ -89,12 +117,17 @@ export const DELETE = handle(async (req, ctx: Ctx) => {
   const { id: rawId } = await ctx.params;
   const id = Number(rawId);
   const prior = await db
-    .select({ originalName: brochures.originalName, projectId: brochures.projectId })
+    .select({ originalName: brochures.originalName, projectId: brochures.projectId, storage: brochures.storage, storageKey: brochures.storageKey })
     .from(brochures)
     .where(eq(brochures.id, id))
     .limit(1);
   if (!prior[0]) throw new ApiError(404, "Brochure not found");
   await db.delete(brochures).where(eq(brochures.id, id));
+  if (prior[0].storage === "r2" && prior[0].storageKey) {
+    // The DB row is gone — do not orphan the object in the bucket.
+    const { deleteR2Object } = await import("@/lib/r2");
+    await deleteR2Object(prior[0].storageKey);
+  }
   await audit({
     user: me,
     action: "brochure.deleted",

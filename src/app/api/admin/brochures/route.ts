@@ -1,4 +1,4 @@
-import { desc, eq, sql } from "drizzle-orm";
+import { desc, eq, ne, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { brochures, projects } from "@/db/schema";
 import { ApiError, getIp, handle, json } from "@/lib/api";
@@ -24,6 +24,7 @@ const listCols = {
   mimeType: brochures.mimeType,
   size: brochures.size,
   allowDownload: brochures.allowDownload,
+  status: brochures.status,
   downloads: brochures.downloads,
   uploadedBy: brochures.uploadedBy,
   createdAt: brochures.createdAt,
@@ -36,13 +37,15 @@ export const GET = handle(async () => {
     .select({ brochure: listCols, projectName: projects.name, projectSlug: projects.slug })
     .from(brochures)
     .innerJoin(projects, eq(brochures.projectId, projects.id))
+    // Hide in-flight direct-to-R2 sessions — the PDF is not verified yet.
+    .where(ne(brochures.status, "pending"))
     .orderBy(desc(brochures.createdAt));
 
   // Active brochure per project = the most recent upload (history is retained).
   const latestByProject = new Map<number, { id: number }>();
   const history: { id: number }[] = [];
   const seen = new Set<number>();
-  const [{ count }] = await db.select({ count: sql<number>`count(*)::int` }).from(brochures);
+  const [{ count }] = await db.select({ count: sql<number>`count(*)::int` }).from(brochures).where(ne(brochures.status, "pending"));
 
   for (const r of rows) {
     const brochure = r.brochure as unknown as { projectId: number; id: number };
