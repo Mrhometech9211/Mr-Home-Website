@@ -33,6 +33,7 @@ import {
   AbortMultipartUploadCommand,
   DeleteObjectCommand,
   GetObjectCommand,
+  HeadBucketCommand,
   HeadObjectCommand,
   PutObjectCommand,
   UploadPartCommand,
@@ -51,43 +52,156 @@ export type R2Config = {
   publicUrl: string | null;
 };
 
-let cached: R2Config | null | undefined;
-
 function readEnv(name: string): string | undefined {
   const v = process.env[name];
   return v && v.trim() !== "" ? v.trim() : undefined;
 }
 
-/** Returns the client-side-safe truth without touching secret values. */
-export function r2IsConfigured(): boolean {
-  return !!(readEnv("R2_BUCKET_NAME") && readEnv("R2_ACCESS_KEY_ID") && readEnv("R2_SECRET_ACCESS_KEY") && (readEnv("R2_ACCOUNT_ID") || readEnv("R2_ENDPOINT")));
+/**
+ * Cloudflare account ids are 32 hex characters. Accept the common paste
+ * variants (full endpoint URL, trailing slashes, `.r2.cloudflarestorage.com`
+ * suffix) instead of emitting a malformed presigned URL — a malformed host
+ * reaches the browser as an opaque "network error" during the PUT.
+ */
+function normalizeAccountId(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  const v = raw
+    .trim()
+    .replace(/^https?:\/\//i, "")
+    .replace(/\.r2\.cloudflarestorage\.com.*$/i, "")
+    .replace(/\/.*$/, "")
+    .trim();
+  return v || undefined;
 }
 
-/** Lazily builds (or caches) the client; null when env is incomplete. */
+type Resolved = {
+  endpoint: string;
+  bucket: string;
+  accessKeyId: string;
+  secretAccessKey: string;
+  publicUrl: string | null;
+  warnings: string[];
+};
+
+let cached: R2Config | null | undefined;
+let resolved: Resolved | null | undefined;
+let problems: string[] = [];
+
+function resolveConfig(): { cfg: Resolved | null; problems: string[] } {
+  if (resolved !== undefined) return { cfg: resolved, problems };
+  const errs: string[] = [];
+  const warnings: string[] = [];
+
+  const explicitEndpoint = readEnv("R2_ENDPOINT");
+  let endpoint: string | undefined;
+  if (explicitEndpoint) {
+    try {
+      const u = new URL(explicitEndpoint);
+      if (u.protocol !== "https:" && u.protocol !== "http:") errs.push("R2_ENDPOINT must be an http(s) URL");
+      else endpoint = explicitEndpoint.replace(/\/+$/, "");
+    } catch {
+      errs.push("R2_ENDPOINT is not a valid URL");
+    }
+  } else {
+    const account = normalizeAccountId(readEnv("R2_ACCOUNT_ID"));
+    if (!account) errs.push("R2_ACCOUNT_ID (or R2_ENDPOINT) is missing");
+    else if (!/^[a-f0-9]{32}$/i.test(account)) {
+      errs.push("R2_ACCOUNT_ID does not look like a 32-character Cloudflare account id (paste the account id, not the endpoint URL)");
+    } else endpoint = `https://${account}.r2.cloudflarestorage.com`;
+  }
+
+  const bucket = readEnv("R2_BUCKET_NAME");
+  const accessKeyId = readEnv("R2_ACCESS_KEY_ID");
+  const secretAccessKey = readEnv("R2_SECRET_ACCESS_KEY");
+  if (!bucket) errs.push("R2_BUCKET_NAME is missing");
+  if (!accessKeyId) errs.push("R2_ACCESS_KEY_ID is missing");
+  if (!secretAccessKey) errs.push("R2_SECRET_ACCESS_KEY is missing");
+
+  let publicUrl: string | null = null;
+  const publicRaw = readEnv("R2_PUBLIC_URL");
+  if (publicRaw) {
+    try {
+      const u = new URL(publicRaw);
+      if (u.protocol !== "https:" && u.protocol !== "http:") warnings.push("R2_PUBLIC_URL must be an http(s) URL — public delivery stays disabled");
+      else {
+        publicUrl = publicRaw.replace(/\/+$/, "");
+        if (u.hostname.endsWith(".r2.cloudflarestorage.com")) {
+          warnings.push("R2_PUBLIC_URL points at the private S3 endpoint — use the public r2.dev domain or a custom domain; media is proxied server-side instead");
+          publicUrl = null;
+        }
+      }
+    } catch {
+      warnings.push("R2_PUBLIC_URL is not a valid URL — public delivery stays disabled");
+    }
+  }
+
+  if (errs.length || !endpoint || !bucket || !accessKeyId || !secretAccessKey) {
+    resolved = null;
+    problems = errs;
+    return { cfg: null, problems };
+  }
+  resolved = { endpoint, bucket, accessKeyId, secretAccessKey, publicUrl, warnings };
+  problems = [];
+  return { cfg: resolved, problems };
+}
+
+/** Returns the client-side-safe truth without touching secret values. */
+export function r2IsConfigured(): boolean {
+  return resolveConfig().cfg !== null;
+}
+
+/** Lazily builds (or caches) the client; null when env is incomplete/invalid. */
 export function getR2(): R2Config | null {
   if (cached !== undefined) return cached;
-  if (!r2IsConfigured()) {
+  const { cfg } = resolveConfig();
+  if (!cfg) {
     cached = null;
     return cached;
   }
-  const accountId = readEnv("R2_ACCOUNT_ID");
-  const endpoint = readEnv("R2_ENDPOINT") ?? (accountId ? `https://${accountId}.r2.cloudflarestorage.com` : undefined);
   const client = new S3Client({
     region: readEnv("R2_REGION") ?? "auto",
-    endpoint,
-    credentials: {
-      accessKeyId: readEnv("R2_ACCESS_KEY_ID")!,
-      secretAccessKey: readEnv("R2_SECRET_ACCESS_KEY")!,
-    },
+    endpoint: cfg.endpoint,
+    // R2 accepts both styles; the local emulator (127.0.0.1/localhost) only
+    // implements path-style, so force it there and keep R2's default elsewhere.
+    forcePathStyle: /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/i.test(cfg.endpoint),
+    credentials: { accessKeyId: cfg.accessKeyId, secretAccessKey: cfg.secretAccessKey },
   });
-  cached = { client, bucket: readEnv("R2_BUCKET_NAME")!, publicUrl: readEnv("R2_PUBLIC_URL") ?? null };
+  cached = { client, bucket: cfg.bucket, publicUrl: cfg.publicUrl };
   return cached;
+}
+
+/**
+ * Admin-only diagnostics: env names and validation outcomes only — never
+ * values, keys, account ids or bucket names.
+ */
+export function r2Diagnostics(): { configured: boolean; problems: string[]; warnings: string[]; publicDelivery: boolean } {
+  const { cfg, problems: errs } = resolveConfig();
+  return { configured: !!cfg, problems: errs, warnings: cfg?.warnings ?? [], publicDelivery: !!cfg?.publicUrl };
+}
+
+/**
+ * Server → R2 reachability/credential probe (HeadBucket). Distinguishes a
+ * bad endpoint/credential from a browser-side CORS block on a presigned PUT.
+ */
+export async function probeR2(): Promise<{ ok: boolean; error?: string }> {
+  const r2 = getR2();
+  if (!r2) return { ok: false, error: "not-configured" };
+  try {
+    await r2.client.send(new HeadBucketCommand({ Bucket: r2.bucket }), { abortSignal: AbortSignal.timeout(5000) });
+    return { ok: true };
+  } catch (err) {
+    const e = err as { name?: string; $metadata?: { httpStatusCode?: number } };
+    return { ok: false, error: `${e.name ?? "RequestFailed"}${e.$metadata?.httpStatusCode ? ` (HTTP ${e.$metadata.httpStatusCode})` : ""}` };
+  }
 }
 
 /** Test helper — drop the memoised config after env changes. */
 export function resetR2Cache(): void {
   cached = undefined;
+  resolved = undefined;
+  problems = [];
 }
+
 
 /** Safe, namespaced object key. Keys are validated against this shape before use. */
 export function assertSafeKey(key: string): void {
@@ -121,6 +235,29 @@ export async function presignPut(key: string, contentType: string, expiresSecond
     r2.client,
     new PutObjectCommand({ Bucket: r2.bucket, Key: key, ContentType: contentType }),
     { expiresIn: expiresSeconds },
+  );
+}
+
+/**
+ * Short-lived presigned GET for gated downloads. Returning a redirect to R2
+ * (instead of streaming the object through the function) avoids Vercel's
+ * response-body cap — large brochures previously failed to download through
+ * /api/brochures/[id] — and works with a private bucket.
+ */
+export async function presignGet(key: string, opts: { filename?: string; expiresSeconds?: number; inline?: boolean } = {}): Promise<string> {
+  const r2 = getR2();
+  if (!r2) throw new Error("R2 is not configured");
+  assertSafeKey(key);
+  const name = (opts.filename ?? "brochure.pdf").replace(/[^\w.\- ]+/g, "_").slice(0, 180) || "brochure.pdf";
+  return getSignedUrl(
+    r2.client,
+    new GetObjectCommand({
+      Bucket: r2.bucket,
+      Key: key,
+      ResponseContentDisposition: `${opts.inline ? "inline" : "attachment"}; filename="${name}"`,
+      ResponseContentType: "application/pdf",
+    }),
+    { expiresIn: opts.expiresSeconds ?? 300 },
   );
 }
 

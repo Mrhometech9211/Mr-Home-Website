@@ -24,6 +24,9 @@ Thumbs.db
 
 # Local runtime / secret material that must never be committed
 .ssh/
+# Local R2 emulator store + QA screenshots
+tmp-mr2/
+screenshots/
 .pglite-data*/
 .pglite-wal-salvage/
 *.pid

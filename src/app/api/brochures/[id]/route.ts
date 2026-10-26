@@ -3,7 +3,7 @@ import { db } from "@/db";
 import { brochures, projects } from "@/db/schema";
 import { ApiError, getIp, json } from "@/lib/api";
 import { rateLimit } from "@/lib/rate-limit";
-import { verifyBrochureDownload, brochureExistsForProject } from "@/lib/brochure-token";
+import { verifyBrochureDownload } from "@/lib/brochure-token";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -63,18 +63,28 @@ export const GET = async (req: Request, ctx: Ctx) => {
       return json({ error: "Brochure no longer available" }, { status: 403 });
     }
 
-    await db.update(brochures).set({ downloads: row.downloads + 1, updatedAt: new Date() }).where(eq(brochures.id, id));
-
-    // Storage resolution: R2 object first, legacy Postgres bytea second.
-    let bytes: Uint8Array;
+    // R2 objects are released with a short-lived presigned GET redirect rather
+    // than streamed through the function: Vercel caps response bodies (~4.5 MB)
+    // and 60 MB brochures silently failed in the browser. The signature is only
+    // minted after the lead gate above, so the gate still protects the file.
     if (row.storage === "r2" && row.storageKey) {
-      const { getR2Buffer } = await import("@/lib/r2");
-      const buffer = await getR2Buffer(row.storageKey);
-      if (!buffer) return json({ error: "Brochure not found" }, { status: 404 });
-      bytes = new Uint8Array(buffer);
-    } else {
-      bytes = new Uint8Array(row.data as unknown as ArrayBuffer);
+      try {
+        const { presignGet } = await import("@/lib/r2");
+        const location = await presignGet(row.storageKey, { filename: row.originalName || "brochure.pdf" });
+        // Count only releases that actually produced a URL.
+        await db.update(brochures).set({ downloads: row.downloads + 1, updatedAt: new Date() }).where(eq(brochures.id, id));
+        return new Response(null, {
+          status: 302,
+          headers: { Location: location, "Cache-Control": "no-store" },
+        });
+      } catch {
+        return json({ error: "Brochure storage is temporarily unavailable — please try again." }, { status: 503 });
+      }
     }
+
+    // Legacy Postgres bytea rows keep streaming exactly as before.
+    await db.update(brochures).set({ downloads: row.downloads + 1, updatedAt: new Date() }).where(eq(brochures.id, id));
+    const bytes = new Uint8Array(row.data as unknown as ArrayBuffer);
     return new Response(bytes as unknown as BodyInit, {
       status: 200,
       headers: {

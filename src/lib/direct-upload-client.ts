@@ -9,9 +9,10 @@
  *   3. POST .../upload/complete                          → row flips to `ready`
  *      (cancels the pending row automatically on failure)
  *
- * If R2 is not configured on the server, step 1 returns 503 and the helper
- * transparently falls back to the legacy multipart POST that stores the file
- * in Postgres — the admin UX stays identical either way.
+ * If R2 is not configured on the server, small files fall back to the legacy
+ * multipart POST that stores the file in Postgres. Vercel caps request bodies
+ * at ~4.5 MB, so a large file is NEVER retried through that fallback — doing so
+ * produced an opaque browser "network error" instead of a usable message.
  */
 
 type DirectInit = {
@@ -24,14 +25,20 @@ type DirectInit = {
 
 export type UploadProgress = { loadedPct: number | null };
 
-let r2ModePromise: Promise<"r2" | "legacy" | null> | null = null;
+/** Conservative ceiling for the legacy in-band upload path (Vercel ~4.5 MB). */
+const IN_BAND_MAX = 4 * 1024 * 1024;
 
-async function r2Mode(): Promise<"r2" | "legacy" | null> {
+let r2ModePromise: Promise<"r2" | "legacy" | "unknown"> | null = null;
+
+async function r2Mode(): Promise<"r2" | "legacy" | "unknown"> {
   if (!r2ModePromise) {
     r2ModePromise = fetch("/api/admin/upload/status", { credentials: "same-origin" })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => ((d?.data?.mode as string) === "r2" ? "r2" : "legacy"))
-      .catch(() => "legacy" as const);
+      .then(async (r) => {
+        if (!r.ok) return "unknown" as const;
+        const d = (await r.json().catch(() => null)) as { data?: { mode?: string } } | null;
+        return d?.data?.mode === "r2" ? ("r2" as const) : ("legacy" as const);
+      })
+      .catch(() => "unknown" as const);
   }
   return r2ModePromise;
 }
@@ -47,9 +54,14 @@ function presignedPut(url: string, file: File, onProgress?: (pct: number) => voi
     };
     xhr.onload = () => {
       if (xhr.status >= 200 && xhr.status < 300) resolve();
-      else reject(new Error(`Storage rejected the upload (HTTP ${xhr.status})`));
+      else reject(new Error(`Storage rejected the upload (HTTP ${xhr.status}). Check the R2 bucket permissions and CORS policy.`));
     };
-    xhr.onerror = () => reject(new Error("Network error while uploading to storage"));
+    xhr.onerror = () =>
+      reject(
+        new Error(
+          `Could not upload directly to object storage from this browser. This is usually a missing CORS rule on the R2 bucket — allow PUT from ${window.location.origin}.`,
+        ),
+      );
     xhr.ontimeout = () => {
       xhr.abort();
       reject(new Error("Upload timed out — please try again"));
@@ -59,7 +71,7 @@ function presignedPut(url: string, file: File, onProgress?: (pct: number) => voi
   });
 }
 
-function putPart(url: string, chunk: Blob, contentType: string): Promise<string> {
+function putPartOnce(url: string, chunk: Blob, contentType: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("PUT", url);
@@ -70,8 +82,29 @@ function putPart(url: string, chunk: Blob, contentType: string): Promise<string>
       else reject(new Error(`Part upload failed (HTTP ${xhr.status})`));
     };
     xhr.onerror = () => reject(new Error("Network error while uploading a part"));
+    xhr.timeout = 10 * 60 * 1000;
     xhr.send(chunk);
   });
+}
+
+/** One retry for transient part failures; large uploads should not die on a blip. */
+async function putPart(url: string, chunk: Blob, contentType: string): Promise<string> {
+  try {
+    return await putPartOnce(url, chunk, contentType);
+  } catch (err) {
+    if (/HTTP 4\d\d/.test((err as Error).message)) throw err;
+    await new Promise((r) => setTimeout(r, 750));
+    return putPartOnce(url, chunk, contentType);
+  }
+}
+
+async function cancelUpload(base: string, id: number, uploadId?: string): Promise<void> {
+  await fetch(`${base}/cancel`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify({ id, ...(uploadId ? { multipart: { uploadId } } : {}) }),
+  }).catch(() => undefined);
 }
 
 /**
@@ -84,11 +117,13 @@ export async function directUpload(
   file: File,
   opts: { projectId?: number; allowDownload?: boolean; initialUrl?: File | null; onProgress?: (pct: number | null) => void } = {},
 ): Promise<{ id: number }> {
+  const base = kind === "media" ? "/api/admin/media/upload" : "/api/admin/brochures/upload";
   const mode = await r2Mode();
-  if (mode === "r2") {
-    const base = kind === "media" ? "/api/admin/media/upload" : "/api/admin/brochures/upload";
+
+  if (mode !== "legacy") {
+    let initRes: Response;
     try {
-      const initRes = await fetch(base, {
+      initRes = await fetch(base, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "same-origin",
@@ -99,76 +134,89 @@ export async function directUpload(
           size: file.size,
         }),
       });
-      if (!initRes.ok) {
-        // Fallback if R2 was disabled between status probe and init.
-        const err = await initRes.json().catch(() => ({}));
-        if (initRes.status >= 400 && initRes.status < 500) throw new Error(err.error || "Upload refused");
-        throw Object.assign(new Error(err.error || "Upload refused"), { fallback: true });
-      }
+    } catch {
+      throw new Error("Could not reach the upload service — check your connection and try again.");
+    }
+
+    if (initRes.ok) {
       const init = ((await initRes.json()) as { data: DirectInit }).data;
-
-      let progressPct: number | null = 0;
-      if (init.mode === "direct" && init.putUrl) {
-        await presignedPut(init.putUrl, file, (p) => {
-          progressPct = Math.min(95, p * 0.95);
-          opts.onProgress?.(progressPct);
-        });
-      } else if (init.mode === "multipart" && init.parts) {
-        // Chunk the file client-side and PUT each part — memory stays flat.
-        progressPct = 0;
-        opts.onProgress?.(0);
-        const parts: { partNumber: number; etag: string }[] = [];
-        for (let i = 0; i < init.parts.partUrls.length; i++) {
-          const start = i * init.parts.partSize;
-          const chunk = file.slice(start, Math.min(file.size, start + init.parts.partSize));
-          const etag = await putPart(init.parts.partUrls[i], chunk, file.type || "application/octet-stream");
-          parts.push({ partNumber: i + 1, etag });
-          opts.onProgress?.(Math.round(((i + 1) / init.parts.partUrls.length) * 95));
+      try {
+        if (init.mode === "direct" && init.putUrl) {
+          await presignedPut(init.putUrl, file, (p) => opts.onProgress?.(Math.min(95, p * 0.95)));
+        } else if (init.mode === "multipart" && init.parts) {
+          // Chunk the file client-side and PUT each part — memory stays flat.
+          opts.onProgress?.(0);
+          const parts: { partNumber: number; etag: string }[] = [];
+          for (let i = 0; i < init.parts.partUrls.length; i++) {
+            const start = i * init.parts.partSize;
+            const chunk = file.slice(start, Math.min(file.size, start + init.parts.partSize));
+            const etag = await putPart(init.parts.partUrls[i], chunk, file.type || "application/octet-stream");
+            parts.push({ partNumber: i + 1, etag });
+            opts.onProgress?.(Math.round(((i + 1) / init.parts.partUrls.length) * 95));
+          }
+          const completeRes = await fetch(`${base}/complete`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "same-origin",
+            body: JSON.stringify({ id: init.id, multipart: { uploadId: init.parts.uploadId, parts } }),
+          });
+          if (!completeRes.ok) {
+            const err = (await completeRes.json().catch(() => ({}))) as { error?: string };
+            await cancelUpload(base, init.id, init.parts.uploadId);
+            throw new Error(err.error || "Upload could not be finalized — please try again");
+          }
+          opts.onProgress?.(100);
+          return { id: init.id };
+        } else {
+          await cancelUpload(base, init.id);
+          throw new Error("Storage returned an unexpected upload mode — please try again");
         }
-        await fetch(`${base}/complete`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "same-origin",
-          body: JSON.stringify({ id: init.id, multipart: { uploadId: init.parts.uploadId, parts } }),
-        });
-        opts.onProgress?.(100);
-        return { id: init.id };
-      }
 
-      const completeRes = await fetch(`${base}/complete`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "same-origin",
-        body: JSON.stringify({ id: init.id }),
-      });
-      if (!completeRes.ok) {
-        const err = await completeRes.json().catch(() => ({}));
-        void fetch(`${base}/cancel`, {
+        const completeRes = await fetch(`${base}/complete`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "same-origin",
           body: JSON.stringify({ id: init.id }),
-        }).catch(() => undefined);
-        throw new Error((err as { error?: string }).error || "Upload could not be finalized");
+        });
+        if (!completeRes.ok) {
+          const err = (await completeRes.json().catch(() => ({}))) as { error?: string };
+          await cancelUpload(base, init.id);
+          throw new Error(err.error || "Upload could not be finalized");
+        }
+        opts.onProgress?.(100);
+        return { id: init.id };
+      } catch (err) {
+        // A failed PUT left a pending row behind; best-effort cleanup.
+        if (init.mode === "direct") await cancelUpload(base, init.id);
+        throw err;
       }
-      opts.onProgress?.(100);
-      return { id: init.id };
-    } catch (err) {
-      const e = err as Error & { fallback?: boolean };
-      if (!e.fallback) throw err ?? e;
-      // fall through to the legacy path
     }
+
+    const err = (await initRes.json().catch(() => ({}))) as { error?: string };
+    const message = err.error || `Upload could not start (HTTP ${initRes.status})`;
+    // 4xx are deterministic (auth, type, size) — never retried. 5xx may mean R2
+    // is unavailable: only small files may use the in-band fallback.
+    if (initRes.status < 500) throw new Error(message);
+    if (file.size > IN_BAND_MAX) {
+      throw new Error(
+        `${message} This file is too large for the server fallback (${Math.round(file.size / 1024 / 1024)} MB), so it was not retried.`,
+      );
+    }
+  } else if (file.size > IN_BAND_MAX) {
+    throw new Error(
+      "Object storage (R2) is not configured on this deployment — files over 4 MB cannot be uploaded through the fallback path. Set the R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY and R2_BUCKET_NAME environment variables for this environment.",
+    );
   }
 
-  // Legacy path — unchanged behaviour when R2 is not configured.
+  // Legacy path — small files only, unchanged behaviour when R2 is not configured.
   const fd = new FormData();
   fd.append("file", file);
   if (kind === "brochure") fd.append("projectId", String(opts.projectId));
   const endpoint = kind === "media" ? "/api/admin/media" : "/api/admin/brochures";
   const res = await fetch(endpoint, { method: "POST", body: fd, credentials: "same-origin" });
   if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error((err as { error?: string }).error || `Upload failed (HTTP ${res.status})`);
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error || `Upload failed (HTTP ${res.status})`);
   }
   const data = (await res.json()) as { data?: { id?: number } };
   opts.onProgress?.(null);

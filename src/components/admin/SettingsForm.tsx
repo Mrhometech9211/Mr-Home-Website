@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
-import type { SiteSettings, ListYourPropertyContent, LeadNotifications, Automations } from "@/lib/settings-types";
+import { LYP_FIELDS, type SiteSettings, type ListYourPropertyContent, type LeadNotifications, type Automations } from "@/lib/settings-types";
 import { cn } from "@/lib/utils";
 import { api, Btn, inputCls, labelCls, useToast } from "./ui";
 import { ImageInput } from "./FieldInput";
@@ -226,7 +226,7 @@ export function SettingsForm({ canWrite }: { canWrite: boolean }) {
           </div>
           <div className="grid gap-4 md:grid-cols-2"><div><label className={labelCls}>Form CTA link</label><input value={lyp.formCtaHref ?? ""} onChange={(e) => setLyp({ ...lyp, formCtaHref: e.target.value })} className={inputCls} disabled={!canWrite} placeholder="/contact or https://…" /></div></div>
           <div><label className={labelCls}>Form intro paragraph</label><textarea rows={2} value={lyp.formIntro} onChange={(e) => setLyp({ ...lyp, formIntro: e.target.value })} className={cn(inputCls, "h-auto py-2")} disabled={!canWrite} /></div>
-          <div><div className={labelCls}>List Your Property form fields</div><div className="flex flex-wrap gap-2">{["email", "phone", "preferredLanguage", "propertyAddress", "propertyType", "purpose", "bedrooms", "market", "message"].map((f) => <label key={f} className={cn("cursor-pointer rounded-full border px-3 py-1.5 text-[12.5px]", lyp.contactFields.includes(f) ? "border-brand bg-brand/10 text-brand" : "border-ink/10")}><input type="checkbox" className="sr-only" disabled={!canWrite} checked={lyp.contactFields.includes(f)} onChange={(e) => setLyp({ ...lyp, contactFields: e.target.checked ? [...lyp.contactFields, f] : lyp.contactFields.filter((x) => x !== f) })} />{f}</label>)}</div><p className="mt-1 text-[11.5px] text-mist">Full name is always required. Toggle each remaining field on/off for the public List Your Property form.</p></div>
+          <div><div className={labelCls}>List Your Property form fields</div><div className="flex flex-wrap gap-2">{LYP_FIELDS.filter((f) => f !== "name").map((f) => <label key={f} className={cn("cursor-pointer rounded-full border px-3 py-1.5 text-[12.5px]", lyp.contactFields.includes(f) ? "border-brand bg-brand/10 text-brand" : "border-ink/10")}><input type="checkbox" className="sr-only" disabled={!canWrite} checked={lyp.contactFields.includes(f)} onChange={(e) => setLyp({ ...lyp, contactFields: e.target.checked ? [...lyp.contactFields, f] : lyp.contactFields.filter((x) => x !== f) })} />{f}</label>)}</div><p className="mt-1 text-[11.5px] text-mist">Full name is always required. Toggle each remaining field on/off for the public List Your Property form.</p></div>
           <Toggle {...textProps} k="showEmailCard" label="Show the email contact card below the phone card on the List Your Property page (uses the Contact tab email)" />
           <LypItems lyp={lyp} setLyp={setLyp} field="benefits" label="Benefits (why list with us)" maxItems={8} canWrite={canWrite} />
           <LypItems lyp={lyp} setLyp={setLyp} field="steps" label="Process steps" maxItems={10} canWrite={canWrite} />

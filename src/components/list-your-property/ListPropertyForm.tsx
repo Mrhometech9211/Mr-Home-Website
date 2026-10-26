@@ -90,11 +90,11 @@ export function ListPropertyForm({ markets, lypFields, compact = false }: Props)
   return (
     <form onSubmit={onSubmit} noValidate={false} className={cn("rounded-[28px] border border-ink/8 bg-white p-6 shadow-card sm:p-8")}>
       <div className={cn("grid gap-4", compact ? "sm:grid-cols-2" : "sm:grid-cols-2")}>
-        {visible.has("name") && (
-          <Field name="name" label="Full name" error={state.issues?.name}>
-            <input id="ltp-name" name="name" required minLength={2} maxLength={120} placeholder="Full name" className={inputCls} autoComplete="name" />
-          </Field>
-        )}
+        {/* Full name is always required by the API and the admin UI, so it is
+            always rendered — the toggle list deliberately excludes it. */}
+        <Field name="name" label="Full name" error={state.issues?.name}>
+          <input id="ltp-name" name="name" required minLength={2} maxLength={120} placeholder="Full name" className={inputCls} autoComplete="name" />
+        </Field>
         {visible.has("email") && (
           <Field name="email" label="Email" error={state.issues?.email}>
             <input id="ltp-email" name="email" type="email" placeholder="Email address" className={inputCls} autoComplete="email" />

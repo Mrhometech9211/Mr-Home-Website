@@ -54,6 +54,15 @@ export function imageDimensions(buf: Buffer, mime: string): { width: number; hei
   return null;
 }
 
+/** Active-content scan shared by the legacy upload path and the R2 finalizer. */
+export function svgHasActiveContent(txt: string): boolean {
+  const singleQuote = String.fromCharCode(0x27);
+  return new RegExp(
+    "<script|on\\w+\\s*=|javascript:|<foreignObject|<iframe|xlink:href\\s*=\\s*[" + JSON.stringify(singleQuote) + "\\s]*(?!#|data:image)",
+    "i",
+  ).test(txt);
+}
+
 export function validateUpload(file: { name: string; type: string; size: number }, buf: Buffer) {
   const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
   const declared = file.type.toLowerCase();
@@ -63,11 +72,8 @@ export function validateUpload(file: { name: string; type: string; size: number 
   if (file.size > rule.max) return { ok: false as const, error: `File exceeds the ${(rule.max / 1024 / 1024).toFixed(0)}MB limit.` };
   const sniffed = sniff(buf);
   if (sniffed !== declared && !(declared === "image/avif" && sniffed === "video/mp4")) return { ok: false as const, error: "File contents do not match the declared type." };
-  if (declared === "image/svg+xml") {
-    const txt = buf.toString("utf8");
-    const singleQuote = String.fromCharCode(0x27);
-    const svgDanger = new RegExp("<script|on\\w+\\s*=|javascript:|<foreignObject|<iframe|xlink:href\\s*=\\s*[" + JSON.stringify(singleQuote) + "\\s]*(?!#|data:image)", "i").test(txt);
-    if (svgDanger) return { ok: false as const, error: "SVG contains disallowed active content." };
+  if (declared === "image/svg+xml" && svgHasActiveContent(buf.toString("utf8"))) {
+    return { ok: false as const, error: "SVG contains disallowed active content." };
   }
   let dims: { width: number; height: number } | null = null;
   if (rule.kind === "image" && declared !== "image/svg+xml" && declared !== "image/avif") {

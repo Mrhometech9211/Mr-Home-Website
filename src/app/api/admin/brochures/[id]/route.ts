@@ -47,6 +47,12 @@ export const PATCH = handle(async (req, ctx: Ctx) => {
 
   const contentType = req.headers.get("content-type") ?? "";
   const patch: Record<string, unknown> = { updatedAt: new Date() };
+  /** Old R2 object; deleted only AFTER the row points at the new file. */
+  let obsoleteKey: string | null = null;
+  /** Temporary row created by the direct-upload replace flow — merged into
+   *  this row and then removed so a project never has two live brochures
+   *  sharing one object (deleting either would break the other). */
+  let temporaryRowId: number | null = null;
 
   if (contentType.includes("multipart/form-data")) {
     // Replacement upload. The previous row is only touched once the new file is
@@ -66,13 +72,11 @@ export const PATCH = handle(async (req, ctx: Ctx) => {
     // pointer or the delivery route would keep serving the OLD object.
     patch.storage = "db";
     patch.storageKey = null;
+    patch.status = "ready";
     patch.uploadedBy = me.id;
+    if (prior.storage === "r2" && prior.storageKey) obsoleteKey = prior.storageKey;
     const ad = form.get("allowDownload");
     if (ad !== null) patch.allowDownload = String(ad) !== "false";
-    if (prior.storage === "r2" && prior.storageKey) {
-      const { deleteR2Object } = await import("@/lib/r2");
-      await deleteR2Object(prior.storageKey);
-    }
   } else {
     const body = await readJson<Record<string, unknown>>(req);
     if (typeof body.allowDownload === "boolean") patch.allowDownload = body.allowDownload;
@@ -80,7 +84,7 @@ export const PATCH = handle(async (req, ctx: Ctx) => {
     // the presigned direct-to-R2 flow, then points the existing row at it.
     if (typeof body.newBrochureId === "number" && Number.isInteger(body.newBrochureId) && body.newBrochureId > 0) {
       const [fresh] = await db.select().from(brochures).where(eq(brochures.id, body.newBrochureId)).limit(1);
-      if (!fresh || fresh.status !== "ready" || fresh.projectId !== prior.projectId) {
+      if (!fresh || fresh.id === prior.id || fresh.status !== "ready" || fresh.projectId !== prior.projectId) {
         throw new ApiError(400, "Replacement brochure is not a verified PDF for this project");
       }
       patch.filename = fresh.filename;
@@ -89,16 +93,32 @@ export const PATCH = handle(async (req, ctx: Ctx) => {
       patch.size = fresh.size;
       patch.storage = fresh.storage;
       patch.storageKey = fresh.storageKey ?? null;
+      patch.status = "ready";
       patch.uploadedBy = me.id;
+      // Never keep two payloads on one row: R2 rows drop the legacy bytea and
+      // bytea rows drop the old object key.
+      if (fresh.storage === "r2") patch.data = null;
+      else patch.storageKey = null;
       if (prior.storage === "r2" && prior.storageKey && prior.storageKey !== (fresh.storageKey ?? null)) {
-        // Drop the previous binary by honouring legacy vs R2 storage correctly.
-        const { deleteR2Object } = await import("@/lib/r2");
-        await deleteR2Object(prior.storageKey);
+        obsoleteKey = prior.storageKey;
       }
+      temporaryRowId = fresh.id;
     }
   }
 
-  const [row] = await db.update(brochures).set(patch).where(eq(brochures.id, id)).returning(listCols);
+  // Single transaction: retarget this row and remove the temporary upload row
+  // together, so a failure can never leave two brochures sharing one object.
+  await db.transaction(async (tx) => {
+    await tx.update(brochures).set(patch).where(eq(brochures.id, id));
+    if (temporaryRowId) await tx.delete(brochures).where(eq(brochures.id, temporaryRowId));
+  });
+  const [row] = await db.select(listCols).from(brochures).where(eq(brochures.id, id)).limit(1);
+  if (!row) throw new ApiError(404, "Brochure not found");
+  // The row is safely retargeted — now the previous object can go.
+  if (obsoleteKey) {
+    const { deleteR2Object } = await import("@/lib/r2");
+    await deleteR2Object(obsoleteKey);
+  }
   await audit({
     user: me,
     action: "brochure.updated",

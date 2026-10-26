@@ -45,6 +45,16 @@ export function BrochuresManager({ canWrite, projects }: { canWrite: boolean; pr
   const newProjectRef = useRef<HTMLSelectElement>(null);
   /** Live upload state: pct is null on the legacy path (no byte events). */
   const [progress, setProgress] = useState<{ name: string; pct: number | null; total: number } | null>(null);
+  /** Storage mode for THIS deployment — surfaces a missing R2 configuration
+   *  before an admin loses a large upload to the in-band fallback. */
+  const [storage, setStorage] = useState<{ mode: string; note?: string; problems?: string[] } | null>(null);
+
+  useEffect(() => {
+    fetch("/api/admin/upload/status", { credentials: "same-origin" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => setStorage(d?.data ?? null))
+      .catch(() => undefined);
+  }, []);
 
   const load = async () => {
     setLoading(true);
@@ -62,22 +72,28 @@ export function BrochuresManager({ canWrite, projects }: { canWrite: boolean; pr
   /* Upload: presigned direct-to-R2 (falls back to the legacy multipart POST
    when R2 is off). On failure the previous brochure stays untouched. */
   const upload = async (projectId: number, file: File, replaceRow?: Row) => {
-    const replace = async (newId: number) => {
-      // Swap the file on the existing row: same URL, history retained.
-      await api(`/api/admin/brochures/${replaceRow!.id}`, { method: "PATCH", body: JSON.stringify({ newBrochureId: newId }) });
-    };
-    if (replaceRow) {
-      setBusyId(replaceRow.id);
+    // Uploading for a project that already has a brochure replaces that row
+    // (the select label promises this). Otherwise a second live row would be
+    // created and deleting either could orphan the other's storage object.
+    const target = replaceRow ?? rows.find((r) => r.projectId === projectId);
+    if (target) {
+      setBusyId(target.id);
       setProgress({ name: file.name, pct: null, total: file.size });
+      let newId: number | null = null;
       try {
         const { id } = await directUpload("brochure", file, {
           projectId,
           onProgress: (pct) => setProgress((p) => (p && p.total === file.size ? { ...p, pct } : p)),
         });
-        await replace(id);
+        newId = id;
+        // Swap the file on the existing row: same URL, history retained.
+        await api(`/api/admin/brochures/${target.id}`, { method: "PATCH", body: JSON.stringify({ newBrochureId: id }) });
         toast("Brochure replaced");
         await load();
       } catch (e) {
+        // The replacement row is only merged on success — drop it so a failed
+        // swap does not add a stray brochure (and its R2 object) to the project.
+        if (newId) await api(`/api/admin/brochures/${newId}`, { method: "DELETE" }).catch(() => undefined);
         toast(e instanceof Error ? e.message : "Replacement failed — previous brochure preserved", "error");
       } finally {
         setBusyId(null);
@@ -129,6 +145,19 @@ export function BrochuresManager({ canWrite, projects }: { canWrite: boolean; pr
 
   return (
     <div className="space-y-6">
+      {storage && storage.mode !== "r2" && (
+        <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-[13px] text-amber-900" role="status">
+          <p className="font-semibold">Object storage is not configured on this deployment</p>
+          <p className="mt-1 text-amber-900/80">
+            {storage.note ?? "R2 is not configured — uploads fall back to the server path, which is limited to about 4 MB."}
+          </p>
+          {storage.problems?.length ? (
+            <ul className="mt-1 list-inside list-disc text-[12px] text-amber-900/80">
+              {storage.problems.map((p) => <li key={p}>{p}</li>)}
+            </ul>
+          ) : null}
+        </div>
+      )}
       {canWrite && (
         <div className="rounded-2xl border border-ink/8 bg-white p-5 shadow-card">
           <h2 className="text-[15px] font-semibold text-ink">Upload a brochure</h2>

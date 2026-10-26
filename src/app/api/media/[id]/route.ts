@@ -10,7 +10,9 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   if (Number.isNaN(numeric)) return new Response("Not found", { status: 404 });
   const rows = await db.select().from(media).where(eq(media.id, numeric)).limit(1);
   const m = rows[0];
-  if (!m) return new Response("Not found", { status: 404 });
+  // Pending direct-upload rows have not passed signature/finalisation checks —
+  // never serve their bytes publicly.
+  if (!m || m.status !== "ready") return new Response("Not found", { status: 404 });
   const headers: Record<string, string> = {
     "Content-Type": m.mimeType,
     "X-Content-Type-Options": "nosniff",

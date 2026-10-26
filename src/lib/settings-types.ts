@@ -210,8 +210,16 @@ export function mergeSettings(data: Record<string, unknown> | null | undefined):
   if (typeof merged.seoOgImage === "string" && merged.seoOgImage.includes("images.pexels.com")) merged.seoOgImage = "/images/hero-villa.jpg";
   // Older databases predate the List Your Property content block — deep-merge it.
   merged.listYourProperty = { ...DEFAULT_SETTINGS.listYourProperty, ...((data?.listYourProperty as ListYourPropertyContent) ?? {}) };
-  // Older databases predate the per-field toggle — default every field on.
-  if (!Array.isArray(merged.listYourProperty.contactFields)) merged.listYourProperty.contactFields = [...LYP_ALL_FIELDS];
+  // Per-field toggle normalisation (older databases predate the key; some
+  // early rows also stored field ids that no longer exist). Keep only known
+  // ids, dedupe, and always keep "name" — the public form and API require a
+  // full name, so a hidden name field would make every submission fail. This
+  // also guarantees the settings save cannot be wedged by legacy values.
+  const storedFields: unknown[] = Array.isArray(merged.listYourProperty.contactFields) ? merged.listYourProperty.contactFields : LYP_ALL_FIELDS;
+  const known = new Set<string>(LYP_FIELDS);
+  const fields = [...new Set(storedFields.filter((f): f is string => typeof f === "string" && known.has(f)))];
+  if (!fields.includes("name")) fields.unshift("name");
+  merged.listYourProperty.contactFields = fields;
   // Older databases predate the email-card toggle — default on.
   if (typeof merged.showEmailCard !== "boolean") merged.showEmailCard = true;
   // Older databases predate the notifications block — deep-merge it.

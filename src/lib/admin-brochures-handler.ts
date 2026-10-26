@@ -25,9 +25,12 @@ export const GET = handle(async (req) => {
   const page = parseIntParam(url.searchParams.get("page") ?? undefined, 1, 100000);
   const pageSize = parseIntParam(url.searchParams.get("pageSize") ?? undefined, 24, 100);
   const projectId = parseIntParam(url.searchParams.get("projectId") ?? undefined, 1, 1000000);
-  const where: SQL[] = [];
+  // Only finalized rows: a pending direct-to-R2 row (upload interrupted or
+  // still in flight) has no downloadable object and must not appear as a
+  // brochure in the admin table.
+  const where: SQL[] = [eq(brochures.status, "ready")];
   if (projectId) where.push(eq(brochures.projectId, projectId));
-  const cond = where.length ? and(...where) : undefined;
+  const cond = and(...where);
   const [{ count }] = await db.select({ count: sql<number>`count(*)::int` }).from(brochures).where(cond);
   const rows = await db
     .select({
@@ -58,12 +61,17 @@ export const POST = handle(async (req) => {
   const [proj] = await db.select().from(projects).where(eq(projects.id, projectId)).limit(1);
   if (!proj) throw new ApiError(404, "Project not found");
   const buf = Buffer.from(await file.arrayBuffer());
+  // A .pdf extension is not proof: the legacy path must enforce the same magic
+  // bytes as the direct-to-R2 finalizer.
+  if (buf.length < 5 || buf.subarray(0, 5).toString("ascii") !== "%PDF-") {
+    throw new ApiError(400, "Only valid PDF brochure files are accepted");
+  }
   const filename = `${Date.now().toString(36)}-${Buffer.from(file.name, "utf8").toString("base64url")}`.slice(0, 180);
   const [row] = await db.insert(brochures).values({
     projectId,
     filename,
     originalName: file.name.slice(0, 200),
-    mimeType: file.type.startsWith("application/") ? file.type : "application/pdf",
+    mimeType: "application/pdf",
     size: file.size,
     data: buf,
     uploadedBy: me.id,

@@ -115,12 +115,32 @@ export function BrochureGate({ projectSlug, projectName, className }: Props) {
     void startDownload(downloadUrl);
   }, [status, downloadUrl]);
 
+  /**
+   * Hand the URL to the browser when streaming cannot be read from JS (a
+   * cross-origin storage redirect without CORS headers). Navigation downloads
+   * are not subject to CORS, so the file still arrives with the same
+   * Content-Disposition filename set by the presigned URL.
+   */
+  function browserDownload(url: string) {
+    const a = document.createElement("a");
+    a.href = url;
+    a.rel = "noopener";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setProgress(null);
+    setDlFailed(false);
+    setDlDone(true);
+  }
+
   async function startDownload(url: string) {
     setProgress({ loaded: 0, total: 0 });
     setDlDone(false);
     setDlFailed(false);
+    let gotResponse = false;
     try {
       const res = await fetch(url, { credentials: "same-origin" });
+      gotResponse = true;
       if (!res.ok) throw new Error(res.status === 403 ? "Brochure access expired — submit the form again." : "Download failed. Please try again.");
       // Preferred filename comes from the API's Content-Disposition header.
       const cd = res.headers.get("content-disposition") ?? "";
@@ -153,6 +173,12 @@ export function BrochureGate({ projectSlug, projectName, className }: Props) {
       setProgress({ loaded: blob.size, total: total || blob.size });
       setDlDone(true);
     } catch (err) {
+      if (!gotResponse) {
+        // No readable response at all (CORS-blocked storage redirect): let the
+        // browser download it directly instead of reporting a false failure.
+        browserDownload(url);
+        return;
+      }
       setProgress(null);
       setDlFailed(true);
       setMessage(err instanceof Error ? err.message : "Download failed. Please try again.");

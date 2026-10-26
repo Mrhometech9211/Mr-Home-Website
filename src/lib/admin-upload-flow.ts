@@ -32,12 +32,14 @@ import {
   brochureKey,
   startMultipart,
   completeMultipart,
+  abortMultipart,
   deleteR2Object,
   headR2Object,
+  getR2Buffer,
   getR2HeadBytes,
   presignPut,
 } from "@/lib/r2";
-import { ALLOWED, imageDimensions, sniff } from "@/lib/media-validation";
+import { ALLOWED, imageDimensions, sniff, svgHasActiveContent } from "@/lib/media-validation";
 
 /** How long a `pending` row may exist before the sweeper cancels it. */
 const PENDING_TTL_MS = 24 * 60 * 60 * 1000;
@@ -223,6 +225,18 @@ export async function completeMediaUpload(meId: number, id: number, opts: { mult
     throw new ApiError(400, "File contents do not match the declared type");
   }
 
+  // SVGs are text: the legacy path scans the whole file for active content.
+  // The R2 path must do the same or an SVG with <script> would be published
+  // through /api/media — the head-byte sniff alone cannot catch it.
+  if (row.mimeType === "image/svg+xml") {
+    const whole = await getR2Buffer(row.storageKey);
+    if (!whole || svgHasActiveContent(whole.toString("utf8"))) {
+      await deleteR2Object(row.storageKey);
+      await db.delete(media).where(eq(media.id, row.id));
+      throw new ApiError(400, "SVG contains disallowed active content");
+    }
+  }
+
   // Fill image dimensions using the head bytes (JPEG/PNG/GIF/WebP headers).
   const dims = row.mimeType.startsWith("image/") ? imageDimensions(headBytes, row.mimeType) : null;
   await db
@@ -262,18 +276,26 @@ export async function completeBrochureUpload(meId: number, id: number, opts: { m
   await db.update(brochures).set({ status: "ready" }).where(eq(brochures.id, row.id));
 }
 
-/** Best-effort cancel: delete partial object + pending row. */
-export async function cancelMediaUpload(meId: number, id: number): Promise<void> {
+/** Best-effort cancel: abort a multipart session, delete partial object + pending row. */
+export async function cancelMediaUpload(meId: number, id: number, uploadId?: string): Promise<void> {
   const [row] = await db.select().from(media).where(eq(media.id, id)).limit(1);
   if (!row || row.uploadedBy !== meId || row.status !== "pending") return;
-  if (row.storageKey) await deleteR2Object(row.storageKey);
+  if (row.storageKey) {
+    // Abandoned multipart parts otherwise linger (and bill) until a bucket
+    // lifecycle rule reaps them; aborting is immediate and idempotent.
+    if (uploadId) await abortMultipart(row.storageKey, uploadId);
+    await deleteR2Object(row.storageKey);
+  }
   await db.delete(media).where(eq(media.id, row.id));
 }
 
-export async function cancelBrochureUpload(meId: number, id: number): Promise<void> {
+export async function cancelBrochureUpload(meId: number, id: number, uploadId?: string): Promise<void> {
   const [row] = await db.select().from(brochures).where(eq(brochures.id, id)).limit(1);
   if (!row || row.uploadedBy !== meId || row.status !== "pending") return;
-  if (row.storageKey) await deleteR2Object(row.storageKey);
+  if (row.storageKey) {
+    if (uploadId) await abortMultipart(row.storageKey, uploadId);
+    await deleteR2Object(row.storageKey);
+  }
   await db.delete(brochures).where(eq(brochures.id, row.id));
 }
 
@@ -282,7 +304,7 @@ export async function latestBrochureForProject(projectId: number) {
   const rows = await db
     .select({ id: brochures.id, allowDownload: brochures.allowDownload })
     .from(brochures)
-    .where(eq(brochures.projectId, projectId))
+    .where(and(eq(brochures.projectId, projectId), eq(brochures.status, "ready")))
     .orderBy(desc(brochures.createdAt))
     .limit(1);
   return rows[0] ?? null;
