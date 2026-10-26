@@ -48,6 +48,10 @@ export function BrochuresManager({ canWrite, projects }: { canWrite: boolean; pr
   /** Storage mode for THIS deployment — surfaces a missing R2 configuration
    *  before an admin loses a large upload to the in-band fallback. */
   const [storage, setStorage] = useState<{ mode: string; note?: string; problems?: string[] } | null>(null);
+  /** One-click storage self-test: server credentials (HeadBucket) + a real
+   *  1×1 PNG presigned PUT from THIS browser. The browser step is the only
+   *  way to prove the bucket's CORS policy allows the preview origin. */
+  const [testState, setTestState] = useState<{ running: boolean; result?: { ok: boolean; text: string } }>({ running: false });
 
   useEffect(() => {
     fetch("/api/admin/upload/status", { credentials: "same-origin" })
@@ -116,6 +120,35 @@ export function BrochuresManager({ canWrite, projects }: { canWrite: boolean; pr
     }
   };
 
+  const testStorage = async () => {
+    setTestState({ running: true });
+    try {
+      const res = await fetch("/api/admin/upload/status?probe=1", { credentials: "same-origin" });
+      const d = (await res.json().catch(() => ({}))) as { data?: { r2?: boolean; problems?: string[]; probe?: { ok?: boolean; error?: string } } };
+      const diag = d.data;
+      if (!diag?.r2) {
+        setTestState({ running: false, result: { ok: false, text: `R2 is not configured: ${diag?.problems?.join("; ") || "missing environment variables"}` } });
+        return;
+      }
+      const bytes = Uint8Array.from(
+        atob("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="),
+        (c) => c.charCodeAt(0),
+      );
+      const file = new File([bytes], "storage-test.png", { type: "image/png" });
+      try {
+        const { id } = await directUpload("media", file);
+        if (id) await fetch(`/api/admin/media/${id}`, { method: "DELETE", credentials: "same-origin" }).catch(() => undefined);
+        const server = diag.probe?.ok ? "server credentials OK" : `server probe: ${diag.probe?.error ?? "not run"}`;
+        setTestState({ running: false, result: { ok: true, text: `Browser upload to R2 works — ${server}.` } });
+      } catch (e) {
+        const probe = diag.probe && !diag.probe.ok ? ` Server probe: ${diag.probe.error}.` : "";
+        setTestState({ running: false, result: { ok: false, text: `${e instanceof Error ? e.message : "Upload failed"}${probe}` } });
+      }
+    } catch {
+      setTestState({ running: false, result: { ok: false, text: "Could not reach the upload status endpoint." } });
+    }
+  };
+
   const toggleDownload = async (r: Row) => {
     setBusyId(r.id);
     try {
@@ -160,8 +193,18 @@ export function BrochuresManager({ canWrite, projects }: { canWrite: boolean; pr
       )}
       {canWrite && (
         <div className="rounded-2xl border border-ink/8 bg-white p-5 shadow-card">
-          <h2 className="text-[15px] font-semibold text-ink">Upload a brochure</h2>
-          <p className="mt-1 text-[13px] text-charcoal/70">Attach a brochure to a project (PDF up to 60 MB). Visitors download it after submitting name, phone, city and country — each download is recorded as a lead.</p>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="text-[15px] font-semibold text-ink">Upload a brochure</h2>
+              <p className="mt-1 text-[13px] text-charcoal/70">Attach a brochure to a project (PDF up to 60 MB). Visitors download it after submitting name, phone, city and country — each download is recorded as a lead.</p>
+            </div>
+            <Btn variant="secondary" size="sm" loading={testState.running} onClick={() => void testStorage()}>Test storage</Btn>
+          </div>
+          {testState.result && (
+            <p className={cn("mt-2 rounded-lg px-3 py-2 text-[12.5px]", testState.result.ok ? "bg-emerald-50 text-emerald-800" : "bg-red-50 text-red-700")} role="status">
+              {testState.result.text}
+            </p>
+          )}
           <div className="mt-4 flex flex-wrap items-center gap-3">
             <select
               ref={newProjectRef}
