@@ -192,6 +192,8 @@ export const projects = pgTable(
     latitude: doublePrecision("latitude"),
     longitude: doublePrecision("longitude"),
     developer: text("developer"),
+    /** Optional developer/project logo (public media URL) for offer PDFs. */
+    developerLogo: text("developer_logo"),
     shortDescription: text("short_description"),
     description: text("description"),
     price: numeric("price"),
@@ -220,6 +222,9 @@ export const projects = pgTable(
     amenities: jsonb("amenities").$type<string[]>().default([]),
     specifications: jsonb("specifications").$type<{ label: string; value: string }[]>().default([]),
     documents: jsonb("documents").$type<{ name: string; url: string }[]>().default([]),
+    /** Visual-builder sections for this project's detail page (draft / published). */
+    builderDraft: jsonb("builder_draft").$type<unknown[]>().default([]),
+    builderPublished: jsonb("builder_published").$type<unknown[]>().default([]),
     seoTitle: text("seo_title"),
     seoDescription: text("seo_description"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -521,6 +526,115 @@ export const seoEntries = pgTable("seo_entries", {
   noIndex: boolean("no_index").notNull().default(false),
 });
 
+/** Phase 10 — Sales Offer Generator. Additive tables; existing CRM untouched. */
+export const projectUnits = pgTable(
+  "project_units",
+  {
+    id: serial("id").primaryKey(),
+    projectId: integer("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+    unitNo: text("unit_no").notNull(),
+    unitType: text("unit_type"),
+    bedrooms: text("bedrooms"),
+    area: numeric("area"),
+    areaUnit: text("area_unit"),
+    floor: text("floor"),
+    view: text("view"),
+    price: numeric("price"),
+    currency: text("currency").notNull().default("AED"),
+    status: text("status").notNull().default("available"),
+    notes: text("notes"),
+    source: text("source"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("project_units_project_idx").on(t.projectId)],
+);
+
+export type SalesOfferStatus = "draft" | "needs_info" | "ready_for_review" | "approved" | "archived";
+
+export const salesOffers = pgTable(
+  "sales_offers",
+  {
+    id: serial("id").primaryKey(),
+    reference: text("reference").notNull().unique(),
+    leadId: integer("lead_id").references(() => leads.id, { onDelete: "set null" }),
+    projectId: integer("project_id").references(() => projects.id, { onDelete: "set null" }),
+    unitId: integer("unit_id").references(() => projectUnits.id, { onDelete: "set null" }),
+    /** Approved offers are immutable; a revision creates a new offer row. */
+    revisedFrom: integer("revised_from"),
+    status: text("status").$type<SalesOfferStatus>().notNull().default("draft"),
+    title: text("title"),
+    /** Customer snapshot — intentionally not part of the AI prompt payload. */
+    customer: jsonb("customer").$type<Record<string, unknown>>(),
+    unit: jsonb("unit").$type<Record<string, unknown>>(),
+    terms: jsonb("terms").$type<Record<string, unknown>>(),
+    options: jsonb("options").$type<Record<string, unknown>>(),
+    conversation: jsonb("conversation").$type<Record<string, unknown>>(),
+    currentVersion: integer("current_version").notNull().default(0),
+    createdBy: integer("created_by").references(() => users.id, { onDelete: "set null" }),
+    updatedBy: integer("updated_by"),
+    approvedBy: integer("approved_by"),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("sales_offers_status_idx").on(t.status),
+    index("sales_offers_lead_idx").on(t.leadId),
+    index("sales_offers_project_idx").on(t.projectId),
+    index("sales_offers_created_idx").on(t.createdAt),
+  ],
+);
+
+export const salesOfferVersions = pgTable(
+  "sales_offer_versions",
+  {
+    id: serial("id").primaryKey(),
+    offerId: integer("offer_id").notNull().references(() => salesOffers.id, { onDelete: "cascade" }),
+    version: integer("version").notNull(),
+    /** Generation batch: combined = one file, separate = one file per plan. */
+    batchId: text("batch_id"),
+    /** ready_for_review | approved */
+    status: text("status").notNull().default("ready_for_review"),
+    /** Frozen input snapshot — never mutated after generation. */
+    snapshot: jsonb("snapshot").$type<Record<string, unknown>>().notNull(),
+    calculations: jsonb("calculations").$type<Record<string, unknown>>().notNull(),
+    validation: jsonb("validation").$type<Record<string, unknown>>(),
+    /** R2 key when object storage is configured. */
+    pdfStorageKey: text("pdf_storage_key"),
+    pdfFilename: text("pdf_filename"),
+    pdfMime: text("pdf_mime").notNull().default("application/pdf"),
+    pdfSize: integer("pdf_size"),
+    /** Fallback when R2 is not configured; existing media tables also keep bytea. */
+    pdfData: bytea("pdf_data"),
+    createdBy: integer("created_by"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("sales_offer_versions_offer_idx").on(t.offerId)],
+);
+
+/**
+ * Phase 11 — reusable builder blocks.
+ *
+ * The master `section` is stored once; pages that insert it in "linked" mode
+ * keep only a reference, so editing the master updates every page. "Independent"
+ * inserts copy the section into the page and never look at this row again.
+ */
+export const builderBlocks = pgTable(
+  "builder_blocks",
+  {
+    id: serial("id").primaryKey(),
+    name: text("name").notNull(),
+    category: text("category"),
+    description: text("description"),
+    section: jsonb("section").$type<unknown>().notNull(),
+    createdBy: integer("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("builder_blocks_category_idx").on(t.category)],
+);
+
 export type User = typeof users.$inferSelect;
 export type Market = typeof markets.$inferSelect;
 export type City = typeof cities.$inferSelect;
@@ -535,3 +649,7 @@ export type NewsArticle = typeof newsArticles.$inferSelect;
 export type BuilderPage = typeof pages.$inferSelect;
 export type CustomRole = typeof customRoles.$inferSelect;
 export type Brochure = typeof brochures.$inferSelect;
+export type ProjectUnit = typeof projectUnits.$inferSelect;
+export type SalesOffer = typeof salesOffers.$inferSelect;
+export type SalesOfferVersion = typeof salesOfferVersions.$inferSelect;
+export type BuilderBlockRow = typeof builderBlocks.$inferSelect;

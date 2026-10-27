@@ -226,6 +226,17 @@ export function brochureKey(originalName: string): string {
   return `brochures/${stamp}-${rand}-${base}.pdf`;
 }
 
+/** Server-side upload (generated PDFs, server-produced artifacts). */
+export async function putR2Object(key: string, body: Uint8Array, contentType: string): Promise<void> {
+  const r2 = getR2();
+  if (!r2) throw new Error("R2 is not configured");
+  assertSafeKey(key);
+  await r2.client.send(
+    new PutObjectCommand({ Bucket: r2.bucket, Key: key, Body: body, ContentType: contentType, CacheControl: "private, max-age=0" }),
+    { abortSignal: AbortSignal.timeout(60_000) },
+  );
+}
+
 /** Presigned, short-lived single-PUT URL for direct browser → R2 transfer. */
 export async function presignPut(key: string, contentType: string, expiresSeconds = 3600): Promise<string> {
   const r2 = getR2();
@@ -244,18 +255,18 @@ export async function presignPut(key: string, contentType: string, expiresSecond
  * response-body cap — large brochures previously failed to download through
  * /api/brochures/[id] — and works with a private bucket.
  */
-export async function presignGet(key: string, opts: { filename?: string; expiresSeconds?: number; inline?: boolean } = {}): Promise<string> {
+export async function presignGet(key: string, opts: { filename?: string; expiresSeconds?: number; inline?: boolean; contentType?: string } = {}): Promise<string> {
   const r2 = getR2();
   if (!r2) throw new Error("R2 is not configured");
   assertSafeKey(key);
-  const name = (opts.filename ?? "brochure.pdf").replace(/[^\w.\- ]+/g, "_").slice(0, 180) || "brochure.pdf";
+  const name = (opts.filename ?? "document.pdf").replace(/[^\w.\- ]+/g, "_").slice(0, 180) || "document.pdf";
   return getSignedUrl(
     r2.client,
     new GetObjectCommand({
       Bucket: r2.bucket,
       Key: key,
       ResponseContentDisposition: `${opts.inline ? "inline" : "attachment"}; filename="${name}"`,
-      ResponseContentType: "application/pdf",
+      ResponseContentType: opts.contentType ?? "application/pdf",
     }),
     { expiresIn: opts.expiresSeconds ?? 300 },
   );

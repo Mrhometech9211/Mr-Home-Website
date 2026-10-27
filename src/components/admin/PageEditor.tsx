@@ -2,10 +2,11 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { X, Eye, ExternalLink, Save, ChevronLeft } from "lucide-react";
+import { X, ExternalLink, Save, ChevronLeft, Eye } from "lucide-react";
 import { api, Badge, Btn, Confirm, EmptyState, Skeleton, useToast, Card } from "@/components/admin/ui";
-import { SECTION_TYPES, type BuilderPage, type BuilderSection } from "@/lib/page-builder";
-import { PageMetaEditor, SectionListEditor } from "@/components/admin/Stubs";
+import type { BuilderPage, BuilderSection } from "@/lib/page-builder";
+import { PageMetaEditor } from "@/components/admin/Stubs";
+import { VisualBuilder } from "@/components/admin/VisualBuilder";
 import { formatDate } from "@/lib/utils";
 
 /** pageId 0 → create mode (POST /api/admin/pages, then continue in edit mode). */
@@ -19,12 +20,9 @@ export function PageEditor({ pageId }: { pageId: number }) {
   const [meta, setMeta] = useState({ title: "", slug: "", navLabel: "", navOrder: 0, navVisible: true, seoTitle: "", seoDescription: "", noIndex: false, ogImage: "" });
   const [metaDirty, setMetaDirty] = useState(false);
   const [sections, setSections] = useState<BuilderSection[]>([]);
-  const [draftDirty, setDraftDirty] = useState(false);
   const [revisions, setRevisions] = useState<{ id: number; headline: string; createdAt: string; userName: string | null }[]>([]);
   const [confirmRestore, setConfirmRestore] = useState<{ id: number; headline: string } | null>(null);
   const [confirmDestroy, setConfirmDestroy] = useState(false);
-  const [confirmPublish, setConfirmPublish] = useState(false);
-  const [previewKey, setPreviewKey] = useState(0);
 
   const fetchPage = useCallback(async () => {
     if (creating) {
@@ -90,25 +88,10 @@ export function PageEditor({ pageId }: { pageId: number }) {
     }
   }, [creating, meta, pageId, router, toast, fetchPage]);
 
-  const saveDraft = useCallback(
-    async (next: BuilderSection[]) => {
-      try {
-        await api(`/api/admin/pages/${pageId}`, { method: "PATCH", body: JSON.stringify({ draft: next }) });
-        setSections(next);
-        setDraftDirty(false);
-        setPreviewKey((k) => k + 1);
-        toast("Draft saved", "success");
-      } catch (e) {
-        toast(e instanceof Error ? e.message : "Save failed", "error");
-      }
-    },
-    [pageId, toast],
-  );
-
   const snapshotDraft = useCallback(async () => {
     try {
       await api(`/api/admin/pages/${pageId}`, { method: "PATCH", body: JSON.stringify({ snapshot: true }) });
-      toast("Reversion saved", "success");
+      toast("Revision saved", "success");
       await fetchRevisions();
     } catch (e) {
       toast(e instanceof Error ? e.message : "Save failed", "error");
@@ -116,14 +99,12 @@ export function PageEditor({ pageId }: { pageId: number }) {
   }, [pageId, toast, fetchRevisions]);
 
   const setPublishState = useCallback(
-    async (action: "publish" | "unpublish") => {
-      setConfirmPublish(false);
+    async (action: "unpublish") => {
       try {
         await api(`/api/admin/pages/${pageId}/publish`, { method: "POST", body: JSON.stringify({ action }) });
-        toast(action === "publish" ? "Page published" : "Page unpublished", "success");
+        toast("Page unpublished", "success");
         await fetchPage();
         await fetchRevisions();
-        setPreviewKey((k) => k + 1);
       } catch (e) {
         toast(e instanceof Error ? e.message : "Could not change publish state", "error");
       }
@@ -138,7 +119,6 @@ export function PageEditor({ pageId }: { pageId: number }) {
         await api(`/api/admin/pages/${pageId}/revisions`, { method: "POST", body: JSON.stringify({ revisionId }) });
         toast("Revision restored to the draft", "success");
         await fetchPage();
-        setPreviewKey((k) => k + 1);
       } catch (e) {
         toast(e instanceof Error ? e.message : "Restore failed", "error");
       }
@@ -172,7 +152,6 @@ export function PageEditor({ pageId }: { pageId: number }) {
             <div className="flex items-center gap-2">
               <h1 className="text-[22px] font-semibold tracking-tight">{page?.title ?? "New page"}</h1>
               {page && <Badge tone={page.status === "published" ? "green" : page.status === "archived" ? "amber" : "slate"}>{page.status}</Badge>}
-              {draftDirty && <Badge tone="amber">unsaved draft</Badge>}
               {metaDirty && <Badge tone="blue">unsaved info</Badge>}
             </div>
             {page && (
@@ -194,10 +173,10 @@ export function PageEditor({ pageId }: { pageId: number }) {
               Unpublish
             </Btn>
           )}
-          {!creating && !isPublished && (
-            <Btn variant="primary" size="sm" onClick={() => setConfirmPublish(true)}>
-              Publish
-            </Btn>
+          {!creating && (
+            <a href={`/preview/pages/${pageId}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-lg border border-ink/10 px-3 py-2 text-[12.5px] font-medium text-ink hover:bg-slate-50">
+              <Eye className="h-3.5 w-3.5" /> Draft preview
+            </a>
           )}
           {!creating && (
             <Btn variant="danger" size="sm" onClick={() => setConfirmDestroy(true)}>
@@ -207,91 +186,71 @@ export function PageEditor({ pageId }: { pageId: number }) {
         </div>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_460px]">
-        <div className="space-y-5">
-          <Card title="Page info" actions={
-            <Btn variant="primary" size="sm" loading={false} onClick={saveMeta}>
-              {creating ? "Create page" : "Save info"}
-            </Btn>
-          }>
-            <PageMetaEditor
-              meta={{
-                ...meta,
-                slug: meta.slug || (meta.title ? meta.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) : ""),
-              }}
-              onChange={(patch) => setMeta((m) => ({ ...m, ...patch, ...(typeof patch.navOrder === "string" ? { navOrder: Number(patch.navOrder) } : {}) }))}
-              pageSlug={page?.slug}
-            />
-          </Card>
+      <Card title="Page info" actions={<Btn variant="primary" size="sm" onClick={saveMeta}>{creating ? "Create page" : "Save info"}</Btn>}>
+        <PageMetaEditor
+          meta={{
+            ...meta,
+            slug: meta.slug || (meta.title ? meta.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) : ""),
+          }}
+          onChange={(patch) => {
+            setMeta((m) => ({ ...m, ...patch, ...(typeof patch.navOrder === "string" ? { navOrder: Number(patch.navOrder) } : {}) }));
+            setMetaDirty(true);
+          }}
+          pageSlug={page?.slug}
+        />
+      </Card>
 
-          {creating ? (
-            <EmptyState title="Create the page first" description="Click “Create page” above — sections, preview and publishing unlock right after." />
+      {creating ? (
+        <EmptyState title="Create the page first" description="Click “Create page” above — the visual editor, preview and publishing unlock right after." />
+      ) : (
+        <VisualBuilder
+          target={{
+            kind: "page",
+            id: pageId,
+            title: page?.title ?? "Page",
+            previewSrc: `/preview/pages/${pageId}`,
+            saveUrl: `/api/admin/pages/${pageId}`,
+            publishUrl: `/api/admin/pages/${pageId}/publish`,
+            publicHref: isPublished ? `/${page!.slug}` : null,
+            status: page?.status,
+          }}
+          initialSections={sections}
+          canWrite
+          canPublish
+          onPublished={() => {
+            void fetchPage();
+            void fetchRevisions();
+          }}
+        />
+      )}
+
+      {!creating && (
+        <Card
+          title="Saved revisions"
+          actions={<Btn variant="ghost" size="sm" onClick={snapshotDraft}><Save className="h-3.5 w-3.5" /> Snapshot</Btn>}
+        >
+          {revisions.length === 0 ? (
+            <p className="text-[13px] text-mist">No snapshots yet. Publishing and restoring auto-save a version; “Snapshot” stores one manually.</p>
           ) : (
-            <SectionListEditor initial={sections} onSave={(next) => { setDraftDirty(false); void saveDraft(next); }} saving={false} />
+            <ul className="divide-y divide-ink/6">
+              {revisions.slice(0, 8).map((r) => (
+                <li key={r.id} className="flex items-center justify-between gap-3 py-2.5">
+                  <div className="min-w-0">
+                    <p className="truncate text-[13.5px] font-medium text-ink">{r.headline}</p>
+                    <p className="text-[11.5px] text-mist">
+                      {r.createdAt ? new Date(r.createdAt).toLocaleString() : ""}
+                      {r.userName ? ` · ${r.userName}` : ""}
+                    </p>
+                  </div>
+                  <Btn variant="ghost" size="sm" onClick={() => setConfirmRestore({ id: r.id, headline: r.headline })}>
+                    Restore
+                  </Btn>
+                </li>
+              ))}
+            </ul>
           )}
-        </div>
-
-        <div className="space-y-5">
-          {!creating && (
-            <Card
-              title="Live draft preview"
-              actions={
-                <div className="flex gap-1.5">
-                  <Btn variant="ghost" size="sm" onClick={() => setPreviewKey((k) => k + 1)}>Reload</Btn>
-                  <a href={`/preview/pages/${pageId}?k=${previewKey}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 rounded-lg bg-brand px-3 py-1.5 text-[12px] font-medium text-white hover:bg-brand-deep">
-                    <Eye className="h-3.5 w-3.5" /> Open
-                  </a>
-                </div>
-              }
-            >
-              <iframe
-                key={previewKey}
-                src={`/preview/pages/${pageId}?k=${previewKey}`}
-                title="Draft preview"
-                className="h-[460px] w-full rounded-xl border border-ink/10 bg-ivory"
-                sandbox="allow-same-origin"
-              />
-              <p className="mt-2 text-[12px] text-mist">Only signed-in team members with page access can open this preview. Visitors never see drafts.</p>
-            </Card>
-          )}
-
-          {!creating && (
-            <Card
-              title="Saved revisions"
-              actions={
-                <Btn variant="ghost" size="sm" onClick={snapshotDraft}>
-                  <Save className="h-3.5 w-3.5" /> Snapshot
-                </Btn>
-              }
-            >
-              {revisions.length === 0 ? (
-                <p className="text-[13px] text-mist">No snapshots yet. Publishing and restoring auto-save a version; “Snapshot” stores one manually.</p>
-              ) : (
-                <ul className="divide-y divide-ink/6">
-                  {revisions.slice(0, 8).map((r) => (
-                    <li key={r.id} className="flex items-center justify-between gap-3 py-2.5">
-                      <div className="min-w-0">
-                        <p className="truncate text-[13.5px] font-medium text-ink">{r.headline}</p>
-                        <p className="text-[11.5px] text-mist">
-                          {r.createdAt ? new Date(r.createdAt).toLocaleString() : ""}
-                          {r.userName ? ` · ${r.userName}` : ""}
-                        </p>
-                      </div>
-                      <Btn variant="ghost" size="sm" onClick={() => setConfirmRestore({ id: r.id, headline: r.headline })}>
-                        Restore
-                      </Btn>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </Card>
-          )}
-
-          {!creating && page && sections.length === 0 && !isPublished && (
-            <EmptyState title="Empty page" description="Add sections with “Add block”, save the draft and then publish." />
-          )}
-        </div>
-      </div>
+        </Card>
+      )}
 
       <Confirm
         open={!!confirmRestore}
@@ -300,27 +259,6 @@ export function PageEditor({ pageId }: { pageId: number }) {
         message={`The current draft will be replaced with “${confirmRestore?.headline ?? "revision"}”. Your current draft is snapshotted first, so nothing is lost. Published content is untouched until the next publish.`}
         confirmLabel="Restore"
         onConfirm={() => (confirmRestore ? restoreRevision(confirmRestore.id) : Promise.resolve())}
-      />
-      <Confirm
-        open={confirmPublish}
-        onClose={() => setConfirmPublish(false)}
-        title="Publish this page?"
-        message="The current draft becomes the live page. Visitors will see it at its slug."
-        confirmLabel="Publish"
-        onConfirm={async () => {
-          // Publishing copies the *stored* draft, so save unsaved editor state first.
-          if (draftDirty) {
-            try {
-              await api(`/api/admin/pages/${pageId}`, { method: "PATCH", body: JSON.stringify({ draft: sections }) });
-              setDraftDirty(false);
-            } catch (e) {
-              toast(e instanceof Error ? e.message : "Could not save the draft before publishing", "error");
-              setConfirmPublish(false);
-              return;
-            }
-          }
-          await setPublishState("publish");
-        }}
       />
       <Confirm
         open={confirmDestroy}

@@ -137,6 +137,17 @@ html.mrh-menu-open .mrh-float {
 .scrollbar-none::-webkit-scrollbar { display: none; }
 .scrollbar-none { scrollbar-width: none; }
 
+/* Builder sections with an explicit text colour: headings and body copy
+   inherit it instead of the design system's ink/charcoal utilities. Buttons,
+   badges and other components keep their own colours. */
+.pb-tint :is(h1, h2, h3, h4, p, li, figcaption, dt, dd) { color: inherit; }
+
+/* Editor-only affordances. `pb-edit` is added to the preview document by the
+   visual editor and never exists on the published site. */
+.pb-edit [data-pb] { position: relative; outline: 1px dashed transparent; outline-offset: -2px; cursor: pointer; }
+.pb-edit [data-pb]:hover { outline-color: rgba(31, 143, 58, 0.45); }
+.pb-edit [data-pb][data-pb-selected="true"] { outline: 2px solid #1f8f3a; outline-offset: -2px; }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;

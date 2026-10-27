@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { ArrowLeft, Mail, MessageCircle, Phone, Archive, ArchiveRestore, CheckSquare, Square, Trash2, Pencil } from "lucide-react";
+import { ArrowLeft, Mail, MessageCircle, Phone, Archive, ArchiveRestore, CheckSquare, Square, Trash2, Pencil, FileText } from "lucide-react";
 import { LEAD_STATUSES } from "@/lib/resources";
 import { buildWhatsAppLink } from "@/lib/whatsapp";
 import { formatDateTime } from "@/lib/utils";
@@ -15,7 +15,7 @@ type Note = { id: number; content: string; userName: string | null; createdAt: s
 type Task = { id: number; title: string; dueAt: string | null; done: boolean };
 type Activity = { id: number; type: string; description: string; userName: string | null; createdAt: string };
 
-export function LeadDetail({ id, canWrite, whatsappTemplate, users }: { id: number; canWrite: boolean; whatsappTemplate: string; users: { id: number; name: string }[] }) {
+export function LeadDetail({ id, canWrite, canCreateOffer = false, whatsappTemplate, users }: { id: number; canWrite: boolean; canCreateOffer?: boolean; whatsappTemplate: string; users: { id: number; name: string }[] }) {
   const router = useRouter();
   const { toast } = useToast();
   const [lead, setLead] = useState<Lead | null>(null);
@@ -60,11 +60,12 @@ export function LeadDetail({ id, canWrite, whatsappTemplate, users }: { id: numb
           <Link href="/admin/leads" className="rounded-lg border border-ink/10 bg-white p-2 hover:border-ink/25" aria-label="Back"><ArrowLeft className="h-4 w-4" /></Link>
           <div><h1 className="flex items-center gap-2 text-[20px] font-semibold tracking-tight">{lead.name} <Badge tone={statusTone(lead.status)}>{lead.status}</Badge>{lead.archived && <Badge tone="neutral">Archived</Badge>}</h1><p className="text-[12px] text-mist">Lead #{lead.id} · {lead.email}</p></div>
         </div>
-        {canWrite && (
+        {(canWrite || canCreateOffer) && (
           <div className="flex flex-wrap gap-2">
-            <Btn variant="secondary" onClick={() => setEdit(true)}><Pencil className="h-4 w-4" /> Edit details</Btn>
-            <Btn variant="secondary" onClick={() => patch({ archived: !lead.archived })}>{lead.archived ? <><ArchiveRestore className="h-4 w-4" /> Restore</> : <><Archive className="h-4 w-4" /> Archive</>}</Btn>
-            <Btn variant="danger" onClick={() => setDel(true)}><Trash2 className="h-4 w-4" /></Btn>
+            {canCreateOffer && <Link href={`/admin/sales-offers/new?leadId=${id}`} className="inline-flex h-10 items-center gap-2 rounded-lg bg-brand px-4 text-[13.5px] font-medium text-white hover:bg-brand-deep"><FileText className="h-4 w-4" /> Create Sales Offer</Link>}
+            {canWrite && <Btn variant="secondary" onClick={() => setEdit(true)}><Pencil className="h-4 w-4" /> Edit details</Btn>}
+            {canWrite && <Btn variant="secondary" onClick={() => patch({ archived: !lead.archived })}>{lead.archived ? <><ArchiveRestore className="h-4 w-4" /> Restore</> : <><Archive className="h-4 w-4" /> Archive</>}</Btn>}
+            {canWrite && <Btn variant="danger" onClick={() => setDel(true)}><Trash2 className="h-4 w-4" /></Btn>}
           </div>
         )}
       </div>

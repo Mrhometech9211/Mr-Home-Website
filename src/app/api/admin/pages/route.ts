@@ -4,22 +4,9 @@ import { listPages, serializePage } from "@/lib/pages-server";
 import { db } from "@/db";
 import { pages } from "@/db/schema";
 import { audit } from "@/lib/audit";
-import { isReservedSlug, slugFromTitle } from "@/lib/page-builder";
+import { isReservedSlug, pageCreateSchema, slugFromTitle } from "@/lib/page-builder";
 import { slugify } from "@/lib/utils";
-import { z } from "zod";
 import { eq } from "drizzle-orm";
-
-const metaInput = z.object({
-  title: z.string().trim().min(1, "Title is required").max(140),
-  slug: z.string().trim().max(140).regex(/^[a-zA-Z0-9][a-zA-Z0-9 -/]*$/, "Invalid slug").optional(),
-  navLabel: z.string().trim().max(60).optional().nullable(),
-  navOrder: z.coerce.number().int().min(0).max(99).optional(),
-  navVisible: z.boolean().optional(),
-  seoTitle: z.string().trim().max(170).optional().nullable(),
-  seoDescription: z.string().trim().max(320).optional().nullable(),
-  noIndex: z.boolean().optional(),
-  ogImage: z.string().trim().max(2000).optional().nullable(),
-});
 
 export const GET = handle(async () => {
   await requireUser("pages.read");
@@ -29,7 +16,7 @@ export const GET = handle(async () => {
 export const POST = handle(async (req: Request) => {
   const user = await requireUser("pages.write");
   const body = await readJson(req);
-  const parsed = metaInput.safeParse(body);
+  const parsed = pageCreateSchema.safeParse(body);
   if (!parsed.success) {
     const first = parsed.error.issues[0];
     return json({ error: `Invalid ${first?.path?.join(".") ?? "request"}: ${first?.message ?? "validation failed"}` }, { status: 400 });

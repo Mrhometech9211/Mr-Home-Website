@@ -20,5 +20,5 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
   const numeric = parseInt(id, 10);
   if (Number.isNaN(numeric)) notFound();
   const [settings, staff] = await Promise.all([getSettings(), db.select({ id: users.id, name: users.name }).from(users).where(eq(users.active, true))]);
-  return <LeadDetail id={numeric} canWrite={userCan(user, "leads.write")} whatsappTemplate={`Hello {{name}}, this is ${settings.brandName}. Thank you for your inquiry — how can we help with your property search?`} users={staff} />;
+  return <LeadDetail id={numeric} canWrite={userCan(user, "leads.write")} canCreateOffer={userCan(user, "offers.write")} whatsappTemplate={`Hello {{name}}, this is ${settings.brandName}. Thank you for your inquiry — how can we help with your property search?`} users={staff} />;
 }

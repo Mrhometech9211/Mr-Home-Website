@@ -39,7 +39,7 @@ import {
   getR2HeadBytes,
   presignPut,
 } from "@/lib/r2";
-import { ALLOWED, imageDimensions, sniff, svgHasActiveContent } from "@/lib/media-validation";
+import { ALLOWED, imageDimensions, signatureMatches, sniff, svgHasActiveContent } from "@/lib/media-validation";
 import { BROCHURE_MAX_BYTES, BROCHURE_MAX_LABEL } from "@/lib/upload-limits";
 
 /** How long a `pending` row may exist before the sweeper cancels it. */
@@ -220,7 +220,7 @@ export async function completeMediaUpload(meId: number, id: number, opts: { mult
   // Signature verification: bytes must agree with the declared content type.
   const headBytes = await getR2HeadBytes(row.storageKey, 128);
   const sniffed = sniff(headBytes);
-  if (sniffed !== row.mimeType && !(row.mimeType === "image/avif" && sniffed === "video/mp4")) {
+  if (!signatureMatches(row.mimeType, sniffed)) {
     await deleteR2Object(row.storageKey);
     await db.delete(media).where(eq(media.id, row.id));
     throw new ApiError(400, "File contents do not match the declared type");

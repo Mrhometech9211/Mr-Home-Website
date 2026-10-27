@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 const SESSION_COOKIE = "mrh_session";
 const isProd = process.env.NODE_ENV === "production";
 
-function securityHeaders(res: NextResponse, isAdmin: boolean) {
+function securityHeaders(res: NextResponse, isAdmin: boolean, isPreviewRoute = false) {
   const csp = [
     "default-src 'self'",
     `script-src 'self' 'unsafe-inline'${isProd ? "" : " 'unsafe-eval'"} https://www.googletagmanager.com https://connect.facebook.net`,
@@ -14,17 +14,22 @@ function securityHeaders(res: NextResponse, isAdmin: boolean) {
     // Direct-to-R2 browser PUTs go to the storage endpoint (https in prod).
     // Dev additionally allows loopback http so the local R2 emulator works.
     "connect-src 'self' https:" + (isProd ? "" : " http://127.0.0.1:* http://localhost:*"),
-    "frame-src https://maps.google.com https://www.google.com https://www.youtube.com https://player.vimeo.com",
+    // 'self' is required: the visual builder renders its live canvas in a
+    // same-origin iframe (/preview/pages/<id>, /preview/projects/<id>).
+    "frame-src 'self' https://maps.google.com https://www.google.com https://www.youtube.com https://player.vimeo.com",
     "worker-src 'self' blob:",
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",
-    "frame-ancestors 'none'",
+    // Only the private /preview/* canvas may be framed, and only by this site:
+    // the visual builder mounts it in a same-origin iframe. Everything else
+    // stays unframeable (clickjacking protection).
+    `frame-ancestors ${isPreviewRoute ? "'self'" : "'none'"}`,
     ...(isProd ? ["upgrade-insecure-requests"] : []),
   ].join("; ");
   res.headers.set("Content-Security-Policy", csp);
   res.headers.set("X-Content-Type-Options", "nosniff");
-  res.headers.set("X-Frame-Options", "DENY");
+  res.headers.set("X-Frame-Options", isPreviewRoute ? "SAMEORIGIN" : "DENY");
   res.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
   res.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()");
   res.headers.set("Cross-Origin-Opener-Policy", "same-origin");
@@ -64,7 +69,11 @@ export function proxy(req: NextRequest) {
     }
   }
 
-  return securityHeaders(NextResponse.next(), isAdmin || pathname.startsWith("/api/admin"));
+  return securityHeaders(
+    NextResponse.next(),
+    isAdmin || pathname.startsWith("/api/admin"),
+    pathname.startsWith("/preview/"),
+  );
 }
 
 export const config = {

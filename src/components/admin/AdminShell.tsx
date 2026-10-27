@@ -8,7 +8,7 @@ import {  LayoutDashboard, Inbox, Building2, FileText, Globe2, MapPin, KanbanSqu
 import { ADMIN_NAV } from "@/lib/resources";
 import { CommandPalette } from "@/components/admin/CommandPalette";
 import { cn } from "@/lib/utils";
-import { ToastProvider, useToast } from "./ui";  const ICONS: Record<string, React.ComponentType<{ className?: string }>> = { dashboard: LayoutDashboard, inbox: Inbox, building: Building2, brochure: FileText, globe: Globe2, "map-pin": MapPin, kanban: KanbanSquare, layout: LayoutTemplate, menu: MenuIcon, image: ImageIcon, help: HelpCircle, quote: Quote, mail: Mail, search: Search, scale: Scale, message: MessageCircle, settings: Settings, users: Users, history: History, news: Newspaper, pages: PanelTop, shield: Shield };
+import { ToastProvider, useToast } from "./ui";  const ICONS: Record<string, React.ComponentType<{ className?: string }>> = { dashboard: LayoutDashboard, inbox: Inbox, building: Building2, brochure: FileText, globe: Globe2, "map-pin": MapPin, kanban: KanbanSquare, layout: LayoutTemplate, menu: MenuIcon, image: ImageIcon, help: HelpCircle, quote: Quote, mail: Mail, search: Search, scale: Scale, message: MessageCircle, settings: Settings, users: Users, history: History, news: Newspaper, pages: PanelTop, shield: Shield, offer: FileStack };
 
 type Props = { user: { id: number; name: string; email: string; role: string }; permissions: string[]; brandName: string; logo: string; children: ReactNode; newLeads: number };
 

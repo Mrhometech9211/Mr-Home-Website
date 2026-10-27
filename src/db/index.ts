@@ -152,7 +152,10 @@ async function createDatabase(): Promise<AppDatabase> {
   const drizzleModule = await import("drizzle-orm/pglite");
   const PGlite = pgliteModule.PGlite;
   // Persistent on-disk store so CMS/CRM data survives server restarts in local mode.
-  const dataDir = path.join(process.cwd(), ".pglite-data");
+  // MRH_PGLITE_DIR lets local dev keep the store OUTSIDE the project: Turbopack
+  // watches the project tree, and every write to a WAL file inside it triggered a
+  // recompile + full reload loop. Production uses DATABASE_URL, so this is unused there.
+  const dataDir = process.env.MRH_PGLITE_DIR || path.join(process.cwd(), ".pglite-data");
   try { fs.mkdirSync(dataDir, { recursive: true }); } catch { /* already exists */ }
   const pg = globalForDb.__mrhPglite ?? new PGlite(dataDir);
   globalForDb.__mrhPglite = pg;

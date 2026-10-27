@@ -18,6 +18,8 @@ import { ProjectCard } from "@/components/site/ProjectCard";
 import { InquiryForm } from "@/components/site/InquiryForm";
 import { RoiCalculator } from "@/components/site/RoiCalculator";
 import { Gallery } from "./Gallery";
+import { PageBuilder } from "@/components/site/PageBuilder";
+import { safeSections } from "@/lib/page-builder";
 
 export const dynamic = "force-dynamic";
 
@@ -63,6 +65,9 @@ export default async function ProjectPage({ params }: { params: Params }) {
     offers: project.price ? { "@type": "Offer", price: project.price, priceCurrency: project.currency } : undefined,
   };
   const crumbs = [{ name: "Home", href: "/" }, { name: "Projects", href: "/projects" }, ...(project.market ? [{ name: project.market.name, href: `/projects?market=${project.market.slug}` }] : []), { name: project.name, href: `/projects/${project.slug}` }];
+  // Once an administrator publishes builder sections they replace the legacy
+  // body; projects without a builder configuration render exactly as before.
+  const customSections = safeSections(project.builderPublished);
 
   return (
     <article>
@@ -131,6 +136,16 @@ export default async function ProjectPage({ params }: { params: Params }) {
         </div>
       )}
 
+      {customSections.length > 0 && (
+        <PageBuilder
+          sections={customSections}
+          source={`project:${project.slug}`}
+          project={{ slug: project.slug, name: project.name, hasBrochure: Boolean(brochure?.allowDownload) }}
+        />
+      )}
+
+      {customSections.length === 0 && (
+      <>
       <div className="mx-auto grid max-w-[1400px] gap-12 px-4 py-20 sm:px-6 lg:grid-cols-12">
         <div className="space-y-16 lg:col-span-8">
           <Reveal>
@@ -233,6 +248,8 @@ export default async function ProjectPage({ params }: { params: Params }) {
             <Reveal stagger="[data-r]" className="perspective mt-8 grid gap-6 md:grid-cols-3">{related.map((p) => <div key={p.id} data-r><ProjectCard project={p} /></div>)}</Reveal>
           </div>
         </section>
+      )}
+      </>
       )}
     </article>
   );

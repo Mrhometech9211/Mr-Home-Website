@@ -11,12 +11,24 @@ export const ALLOWED: Record<string, { ext: string[]; kind: "image" | "video" | 
   "video/webm": { ext: ["webm"], kind: "video", max: 80 * 1024 * 1024 },
   // Brochures are PDFs and share this ceiling; both upload through R2 direct.
   "application/pdf": { ext: ["pdf"], kind: "document", max: BROCHURE_MAX_BYTES },
+  // Inventory documents for the Sales Offer Generator. Served as downloads,
+  // never inline, and capped well below the direct-R2 ceiling.
+  "text/csv": { ext: ["csv"], kind: "document", max: 20 * 1024 * 1024 },
+  "text/tab-separated-values": { ext: ["tsv", "txt"], kind: "document", max: 20 * 1024 * 1024 },
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": { ext: ["xlsx"], kind: "document", max: 20 * 1024 * 1024 },
+  "application/vnd.ms-excel.sheet.macroenabled.12": { ext: ["xlsm"], kind: "document", max: 20 * 1024 * 1024 },
+  "application/vnd.ms-excel": { ext: ["xls", "csv"], kind: "document", max: 20 * 1024 * 1024 },
 };
 
 const MAX_DIM = 8000;
 
 /** Byte-signature probe. Exported so the direct-R2 finalize flow can reuse it. */
 export function sniff(buf: Buffer): string | null {
+  if (buf.length < 4) return null;
+  // Legacy Excel (OLE compound file) before the text checks below.
+  if (buf.subarray(0, 8).equals(Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]))) return "application/vnd.ms-excel";
+  // Office Open XML (xlsx/xlsm) is a ZIP container.
+  if (buf.subarray(0, 4).equals(Buffer.from([0x50, 0x4b, 0x03, 0x04]))) return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
   if (buf.length < 12) return null;
   if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return "image/jpeg";
   if (buf.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return "image/png";
@@ -31,7 +43,24 @@ export function sniff(buf: Buffer): string | null {
   if (buf[0] === 0x1a && buf[1] === 0x45 && buf[2] === 0xdf && buf[3] === 0xa3) return "video/webm";
   const head = buf.subarray(0, 512).toString("utf8").trimStart().toLowerCase();
   if (head.startsWith("<svg") || (head.startsWith("<?xml") && head.includes("<svg"))) return "image/svg+xml";
+  // Delimited text (CSV/TSV) has no magic bytes. Only classify a clearly
+  // printable, delimiter-bearing buffer — HTML/JS documents are served as
+  // downloads with nosniff, so this cannot become executable content.
+  if (!buf.subarray(0, 512).includes(0)) {
+    const text = buf.subarray(0, 512).toString("utf8");
+    const printable = text.replace(/[\t\r\n\x20-\x7e]/g, "").length;
+    if (printable <= Math.max(1, text.length * 0.02) && /[,\t;]/.test(text)) return "text/csv";
+  }
   return null;
+}
+
+/** Whether a sniffed signature is compatible with the declared content type. */
+export function signatureMatches(declared: string, sniffed: string | null): boolean {
+  if (declared === sniffed) return true;
+  if (declared === "image/avif" && sniffed === "video/mp4") return true;
+  if ((declared === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" || declared === "application/vnd.ms-excel.sheet.macroenabled.12") && sniffed === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet") return true;
+  if ((declared === "text/tab-separated-values" || declared === "application/vnd.ms-excel") && sniffed === "text/csv") return true;
+  return false;
 }
 
 export function imageDimensions(buf: Buffer, mime: string): { width: number; height: number } | null {
@@ -74,7 +103,7 @@ export function validateUpload(file: { name: string; type: string; size: number 
   if (!rule.ext.includes(ext)) return { ok: false as const, error: `Extension .${ext} does not match type ${declared}.` };
   if (file.size > rule.max) return { ok: false as const, error: `File exceeds the ${(rule.max / 1024 / 1024).toFixed(0)}MB limit.` };
   const sniffed = sniff(buf);
-  if (sniffed !== declared && !(declared === "image/avif" && sniffed === "video/mp4")) return { ok: false as const, error: "File contents do not match the declared type." };
+  if (!signatureMatches(declared, sniffed)) return { ok: false as const, error: "File contents do not match the declared type." };
   if (declared === "image/svg+xml" && svgHasActiveContent(buf.toString("utf8"))) {
     return { ok: false as const, error: "SVG contains disallowed active content." };
   }

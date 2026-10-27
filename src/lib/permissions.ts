@@ -21,6 +21,8 @@ export const PERMISSIONS = [
   "brochures.read", "brochures.write",
   // crm
   "leads.read", "leads.write", "leads.export",
+  // sales offers (Phase 10)
+  "offers.read", "offers.write", "offers.approve",
   // legal + seo
   "seo.read", "seo.write",
   "legal.read", "legal.write",
@@ -110,6 +112,14 @@ export const PERMISSION_GROUPS: { group: string; items: { key: Permission; label
     ],
   },
   {
+    group: "Sales Offers",
+    items: [
+      { key: "offers.read", label: "View sales offers & generated PDFs" },
+      { key: "offers.write", label: "Create / edit offers, import units, generate PDFs" },
+      { key: "offers.approve", label: "Approve offers for client sharing" },
+    ],
+  },
+  {
     group: "SEO & Legal",
     items: [
       { key: "seo.read", label: "View SEO entries" },
@@ -144,6 +154,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     "media.read", "media.write",
     "brochures.read", "brochures.write",
     "leads.read", "leads.write",
+    "offers.read", "offers.write",
     "seo.read", "seo.write",
     "legal.read",
     "settings.read",

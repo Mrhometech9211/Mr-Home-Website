@@ -27,6 +27,17 @@ Thumbs.db
 # Local R2 emulator store + QA screenshots
 tmp-mr2/
 screenshots/
+.mock-r2*/
+.mock-r2.log.err
+
+# Throwaway local QA output (never part of a release)
+.qa-*
+qa-*.png
+qa-*.pdf
+tmp-*.pdf
+*.log.err
+typecheck-*.txt
+public/_qa/
 .pglite-data*/
 .pglite-wal-salvage/
 *.pid
