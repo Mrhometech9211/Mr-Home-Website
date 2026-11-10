@@ -570,7 +570,10 @@ function SectionBody({ section: s, index, source, project, settings, markets, pr
     }
 
     case "related": {
-      const shown = projects.slice(0, Math.min(cols, 6));
+      // An optional market slug in `body` scopes the rail to that market (used by
+      // the market-page seed); empty means “any published project”.
+      const scoped = s.body?.trim() ? projects.filter((p) => p.market?.slug === s.body!.trim()) : projects;
+      const shown = scoped.slice(0, Math.min(cols, 6));
       if (!shown.length) return null;
       return (
         <>

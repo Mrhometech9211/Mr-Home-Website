@@ -14,6 +14,7 @@ import { directUpload } from "@/lib/direct-upload-client";
 import { calculateOffer, deriveQuestions } from "@/lib/offers/calc";
 import { DEFAULT_ASSETS, DEFAULT_DESIGN, suggestedPlan, THEME_PRESETS } from "@/lib/offers/defaults";
 import { formatMinor } from "@/lib/offers/money";
+import { buildTierPlan, DEFAULT_INSTALLMENT_MONTHS, rebuildTierMonths, tierKey, tierPercentFromKey, TIER_PRESETS } from "@/lib/offers/plans";
 import { STATUS_LABELS, type OfferAssets, type OfferCalculation, type OfferDesign, type OfferPlanInput, type OfferStatus, type OfferTermsInput, type OfferUnitInput } from "@/lib/offers/types";
 import { cn, formatDateTime } from "@/lib/utils";
 
@@ -126,6 +127,12 @@ export function SalesOfferBuilder({ offer, initialLead, projects, units, leads, 
   const [currentVersion, setCurrentVersion] = useState(offer?.currentVersion ?? 0);
   const [latestBatchId, setLatestBatchId] = useState<string | null>(offer?.versions?.[0]?.batchId ?? null);
   const [tab, setTab] = useState<Tab>("offer");
+  const [livePdf, setLivePdf] = useState<string | null>(null);
+  const [livePdfError, setLivePdfError] = useState("");
+  const [livePdfLoading, setLivePdfLoading] = useState(false);
+  const [previewPage, setPreviewPage] = useState(1);
+  const [previewZoom, setPreviewZoom] = useState(100);
+  const [canvasOpen, setCanvasOpen] = useState(true);
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<string | null>(offer?.updatedAt ?? null);
@@ -138,6 +145,9 @@ export function SalesOfferBuilder({ offer, initialLead, projects, units, leads, 
   const [newUnit, setNewUnit] = useState({ unitNo: "", unitType: "", bedrooms: "", area: "", price: "", floor: "", view: "" });
   const [genMode, setGenMode] = useState<"combined" | "separate">("combined");
   const [genPlanKeys, setGenPlanKeys] = useState<string[]>(() => (offer?.terms as OfferTermsInput | null)?.plans?.map((p) => p.key) ?? ["plan-1"]);
+  const [tierMonths, setTierMonths] = useState(DEFAULT_INSTALLMENT_MONTHS);
+  const [customTier, setCustomTier] = useState("");
+  const [feePreset, setFeePreset] = useState("");
   const [pickerFor, setPickerFor] = useState<null | "cover" | "gallery" | "floorplan" | "projectLogo" | "mrHomeLogo" | { planImage: string }>(null);
   const importRef = useRef<HTMLInputElement>(null);
 
@@ -149,8 +159,51 @@ export function SalesOfferBuilder({ offer, initialLead, projects, units, leads, 
   const warnings = calc.issues.filter((i) => i.severity === "warning");
   const currency = calc.currency || "AED";
   const needsInfo = errors.length > 0;
+  const previewError = needsInfo ? "Resolve the payment validation errors to preview the PDF." : livePdfError;
   const localQuestions = deriveQuestions(calc, { paymentStartDate: terms.paymentStartDate, handoverDate: terms.handoverDate, customer });
   const promptQuestions = [...new Set([...localQuestions, ...(ai?.questions ?? [])])];
+
+  useEffect(() => {
+    if (tab !== "review" || needsInfo) return;
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      try {
+        setLivePdfLoading(true);
+        setLivePdfError("");
+        const response = await fetch("/api/admin/sales-offers/preview", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ ...payload(), planKeys: genMode === "separate" ? genPlanKeys : undefined }),
+          signal: controller.signal,
+        });
+        if (!response.ok) {
+          const data = await response.json().catch(() => null) as { error?: string; issues?: { path?: string; message: string }[] } | null;
+          const detail = data?.issues?.[0];
+          throw new Error(detail
+            ? `${data?.error ?? "Validation failed"}${data?.issues && data.issues.length > 1 ? ` (${data.issues.length} fields)` : ""}: ${detail.path ? `${detail.path} — ` : ""}${detail.message}`
+            : data?.error || "Could not render the live PDF preview.");
+        }
+        const blob = await response.blob();
+        const nextUrl = URL.createObjectURL(blob);
+        setLivePdf((previous) => {
+          if (previous) URL.revokeObjectURL(previous);
+          return nextUrl;
+        });
+      } catch (error) {
+        if (controller.signal.aborted) return;
+        setLivePdfError(error instanceof Error ? error.message : "Could not render the live PDF preview.");
+      } finally {
+        if (!controller.signal.aborted) setLivePdfLoading(false);
+      }
+    }, 500);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [tab, needsInfo, terms, unit, projectId, title, customer, options, genMode, genPlanKeys]);
+
+  useEffect(() => () => { if (livePdf) URL.revokeObjectURL(livePdf); }, [livePdf]);
 
   useEffect(() => {
     const handler = (e: BeforeUnloadEvent) => {
@@ -230,6 +283,82 @@ export function SalesOfferBuilder({ offer, initialLead, projects, units, leads, 
     setTerms((t) => ({ ...t, plans: t.plans.filter((p) => p.key !== key) }));
     setGenPlanKeys((keys) => keys.filter((k) => k !== key));
     setDirty(true);
+  }
+
+  /** Percentages of the generated down-payment tiers currently in this offer. */
+  const activeTierPercents = useMemo(
+    () => terms.plans.map((p) => tierPercentFromKey(p.key)).filter((n): n is number => n != null).sort((a, b) => a - b),
+    [terms.plans],
+  );
+
+  function addTier(downPercent: number) {
+    if (!Number.isFinite(downPercent)) return;
+    const percent = Math.round(downPercent * 100) / 100;
+    if (percent <= 0 || percent >= 100) {
+      toast("Enter a down payment between 0.01% and 99.99%.", "error");
+      return;
+    }
+    if (terms.plans.some((p) => p.key === tierKey(percent))) {
+      toast("That tier is already in this offer.", "error");
+      return;
+    }
+    if (terms.plans.length >= 8) {
+      toast("An offer can hold at most 8 plans.", "error");
+      return;
+    }
+    let plan: OfferPlanInput;
+    try {
+      plan = buildTierPlan(terms.plans.length, percent, { installmentCount: tierMonths });
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Could not build that tier", "error");
+      return;
+    }
+    setTerms((t) => ({ ...t, plans: [...t.plans, plan] }));
+    setGenPlanKeys((keys) => [...keys, plan.key]);
+    setDirty(true);
+  }
+
+  function toggleTier(percent: number) {
+    if (activeTierPercents.includes(percent)) {
+      removePlan(tierKey(percent));
+      return;
+    }
+    addTier(percent);
+  }
+
+  function applyTierMonths(months: number) {
+    const next = Math.max(1, Math.min(600, Math.trunc(months || 1)));
+    setTierMonths(next);
+    setTerms((t) => ({
+      ...t,
+      plans: t.plans.map((p) => (tierPercentFromKey(p.key) == null ? p : rebuildTierMonths(p, next))),
+    }));
+    setDirty(true);
+  }
+
+  function addFee(fee: { label: string; type: "percent" | "amount"; value: number; basis?: "listPrice" | "contractPrice" }) {
+    setTerms((t) => {
+      const existing = t.fees ?? [];
+      if (existing.length >= 8) return t;
+      const id = `fee-${Date.now().toString(36)}`;
+      return { ...t, fees: [...existing, { id, ...fee }] };
+    });
+    setDirty(true);
+  }
+
+  function addFeePreset(value: string) {
+    if (!value) return;
+    if (value === "vat5") {
+      updateTerms({ vatPct: 5 });
+      toast("VAT set to 5% — check that it applies before generating", "success");
+    } else if (value === "dld4") {
+      addFee({ label: "DLD transfer fee", type: "percent", value: 4, basis: "contractPrice" });
+    } else if (value === "admin2") {
+      addFee({ label: "Admin / processing fee", type: "percent", value: 2, basis: "contractPrice" });
+    } else if (value === "agent2") {
+      addFee({ label: "Agency fee", type: "percent", value: 2, basis: "contractPrice" });
+    }
+    setFeePreset("");
   }
 
   function chooseProject(value: string) {
@@ -798,6 +927,102 @@ export function SalesOfferBuilder({ offer, initialLead, projects, units, leads, 
 
           {tab === "plans" && (
             <div className="space-y-4">
+              <Section title="Down-payment tiers" hint="Pick the tiers to show. Each generated plan allocates exactly 100% of the price.">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {TIER_PRESETS.map((pct) => {
+                    const on = activeTierPercents.includes(pct);
+                    return (
+                      <button
+                        key={pct}
+                        type="button"
+                        onClick={() => toggleTier(pct)}
+                        disabled={disabled || !canWrite}
+                        aria-pressed={on}
+                        className={cn(
+                          "inline-flex h-9 items-center gap-1.5 rounded-full border px-3 text-[12.5px] font-medium transition",
+                          on ? "border-brand bg-brand/10 text-brand-deep" : "border-ink/12 text-charcoal hover:border-ink/30",
+                        )}
+                      >
+                        {on && <Check className="h-3.5 w-3.5" />}
+                        {pct}% down
+                      </button>
+                    );
+                  })}
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      value={customTier}
+                      onChange={(e) => setCustomTier(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          addTier(Number(customTier));
+                          setCustomTier("");
+                        }
+                      }}
+                      inputMode="decimal"
+                      placeholder="Custom %"
+                      aria-label="Custom down payment percentage"
+                      className={cn(inputCls, "h-9 w-24")}
+                      disabled={disabled || !canWrite}
+                    />
+                    <Btn type="button" size="sm" variant="secondary" onClick={() => { addTier(Number(customTier)); setCustomTier(""); }} disabled={disabled || !canWrite || !customTier.trim()}>
+                      <Plus className="h-3.5 w-3.5" /> Add tier
+                    </Btn>
+                  </div>
+                </div>
+
+                <div className="mt-3 flex flex-wrap items-center gap-2 text-[11.5px] text-charcoal/70">
+                  <label className="flex items-center gap-1.5">
+                    Installments
+                    <input
+                      type="number"
+                      min={1}
+                      max={600}
+                      value={tierMonths}
+                      onChange={(e) => applyTierMonths(Number(e.target.value))}
+                      className={cn(inputCls, "h-8 w-20")}
+                      disabled={disabled || !canWrite}
+                      aria-label="Installment months"
+                    />
+                    months
+                  </label>
+                  <span className="text-mist">45% is spread across the series (capped by what remains); the remainder is due at handover. Every figure stays editable.</span>
+                </div>
+
+                {activeTierPercents.length > 0 && (
+                  <div className="mt-3 overflow-x-auto rounded-xl border border-ink/10">
+                    <table className="w-full min-w-[560px] text-[11.5px]">
+                      <thead className="bg-slate-50 text-[10.5px] uppercase tracking-wider text-charcoal/60">
+                        <tr>
+                          <th className="px-2.5 py-2 text-left font-semibold">Tier</th>
+                          <th className="px-2.5 py-2 text-right font-semibold">Contract</th>
+                          <th className="px-2.5 py-2 text-right font-semibold">Initial</th>
+                          <th className="px-2.5 py-2 text-right font-semibold">Monthly</th>
+                          <th className="px-2.5 py-2 text-right font-semibold">Handover</th>
+                          <th className="px-2.5 py-2 text-right font-semibold">Allocated</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-ink/6">
+                        {activeTierPercents.map((pct) => {
+                          const pc = calc.plans.find((p) => p.key === tierKey(pct));
+                          const allocPct = pc && pc.contractPriceMinor > 0 ? Math.round((pc.allocatedMinor / pc.contractPriceMinor) * 10000) / 100 : null;
+                          return (
+                            <tr key={pct}>
+                              <td className="px-2.5 py-1.5 font-medium text-ink">{pct}% down</td>
+                              <td className="px-2.5 py-1.5 text-right">{pc ? formatMinor(pc.contractPriceMinor, currency) : "—"}</td>
+                              <td className="px-2.5 py-1.5 text-right font-semibold">{pc ? formatMinor(pc.initialPaymentMinor, currency) : "—"}</td>
+                              <td className="px-2.5 py-1.5 text-right">{pc && pc.installmentCount ? `${formatMinor(pc.installmentAmountMinor, currency)} × ${pc.installmentCount}` : "—"}</td>
+                              <td className="px-2.5 py-1.5 text-right">{pc ? formatMinor(pc.handoverPaymentMinor, currency) : "—"}</td>
+                              <td className={cn("px-2.5 py-1.5 text-right font-semibold", allocPct === 100 ? "text-emerald-700" : "text-red-700")}>{allocPct == null ? "—" : `${allocPct}%`}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </Section>
+
               <Section title="Payment plans" hint="Each plan must allocate exactly 100% of its contract price. Installment percentages are per payment (1% × 45 = 45%)." actions={canWrite && !disabled ? <Btn size="sm" variant="secondary" onClick={addPlan}><Plus className="h-3.5 w-3.5" /> Add plan</Btn> : undefined}>
                 <div className="space-y-3">
                   {terms.plans.map((plan, planIndex) => {
@@ -877,6 +1102,35 @@ export function SalesOfferBuilder({ offer, initialLead, projects, units, leads, 
                             <div><div className="text-mist">Allocated</div><div className={cn("font-semibold", allocPct === 100 ? "text-emerald-700" : "text-red-700")}>{allocPct}%</div></div>
                           </div>
                         )}
+                        {pc && pc.schedule.length > 0 && (
+                          <details className="mt-2 rounded-lg border border-ink/10 bg-white/70 p-2 text-[11px]">
+                            <summary className="cursor-pointer select-none font-medium text-charcoal/70">
+                              Payment schedule — {pc.schedule.length} line{pc.schedule.length === 1 ? "" : "s"}
+                            </summary>
+                            <table className="mt-2 w-full">
+                              <thead className="text-[10px] uppercase tracking-wider text-mist">
+                                <tr>
+                                  <th className="py-1 text-left font-semibold">Stage</th>
+                                  <th className="py-1 text-left font-semibold">First due</th>
+                                  <th className="py-1 text-right font-semibold">Payments</th>
+                                  <th className="py-1 text-right font-semibold">Each</th>
+                                  <th className="py-1 text-right font-semibold">Total</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-ink/6">
+                                {pc.schedule.map((entry, i) => (
+                                  <tr key={`${entry.sourceComponentId}-${i}`}>
+                                    <td className="py-1 pr-2">{entry.label}</td>
+                                    <td className="py-1 pr-2 text-charcoal/65">{entry.dueDate ?? "—"}</td>
+                                    <td className="py-1 text-right">{entry.count}</td>
+                                    <td className="py-1 text-right">{formatMinor(entry.amountMinor, currency)}</td>
+                                    <td className="py-1 text-right font-medium">{formatMinor(entry.totalMinor, currency)}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </details>
+                        )}
                         {planErrors.length > 0 && (
                           <ul className="mt-2 space-y-1">
                             {planErrors.map((e, i) => <li key={i} className={cn("rounded-lg px-2 py-1 text-[11.5px] ring-1", issueClass(e.severity))}>{e.message}</li>)}
@@ -889,6 +1143,22 @@ export function SalesOfferBuilder({ offer, initialLead, projects, units, leads, 
               </Section>
 
               <Section title="Fees" hint="Only add fees that genuinely apply. Nothing is assumed." actions={canWrite && !disabled ? <Btn size="sm" variant="secondary" onClick={() => { const nextId = `fee-${(terms.fees?.length ?? 0) + 1}`; updateTerms({ fees: [...(terms.fees ?? []), { id: nextId, label: "Registration fee", type: "percent", value: 4, basis: "contractPrice" }] }); }}><Plus className="h-3.5 w-3.5" /> Add fee</Btn> : undefined}>
+                <div className="mb-2 flex flex-wrap items-center gap-2">
+                  <select
+                    value={feePreset}
+                    onChange={(e) => addFeePreset(e.target.value)}
+                    className={cn(inputCls, "h-8 w-auto text-[12px]")}
+                    disabled={disabled || !canWrite}
+                    aria-label="Add a common fee"
+                  >
+                    <option value="">Add a common fee (optional)…</option>
+                    <option value="dld4">DLD transfer fee — 4% of contract</option>
+                    <option value="admin2">Admin / processing fee — 2% of contract</option>
+                    <option value="agent2">Agency fee — 2% of contract</option>
+                    <option value="vat5">VAT — set 5%</option>
+                  </select>
+                  <span className="text-[11px] text-mist">Only add fees that genuinely apply to this offer. Every value is editable.</span>
+                </div>
                 {(terms.fees?.length ?? 0) === 0 ? <p className="text-[12.5px] text-mist">No fees added — the offer shows the unit price only.</p> : (
                   <div className="space-y-2">
                     {terms.fees!.map((fee) => (
@@ -944,6 +1214,7 @@ export function SalesOfferBuilder({ offer, initialLead, projects, units, leads, 
                     ["photo", "Photo cover", "Full-bleed project photography with a tinted scrim."],
                     ["split", "Split cover", "Solid type panel beside the hero image."],
                     ["solid", "Solid cover", "Type-first cover with a restrained image band."],
+                    ["frame", "Framed print", "Full-bleed photo inside an ink frame with a fine accent rule."],
                   ] as const).map(([key, label, help]) => (
                     <button key={key} type="button" onClick={() => setDesign({ coverStyle: key })} disabled={disabled} className={cn("rounded-xl border p-3 text-left transition", (options.design.coverStyle ?? "photo") === key ? "border-brand ring-2 ring-brand/20" : "border-ink/10 hover:border-ink/25")}>
                       <div className="text-[12.5px] font-medium">{label}</div>
@@ -981,6 +1252,43 @@ export function SalesOfferBuilder({ offer, initialLead, projects, units, leads, 
                   <Toggle checked={options.design.showUnitStrip !== false} onChange={(v) => setDesign({ showUnitStrip: v })} label="Unit & price strip" disabled={disabled} />
                   <Toggle checked={options.design.showPlanImages !== false} onChange={(v) => setDesign({ showPlanImages: v })} label="Plan card photos" disabled={disabled} />
                   <Toggle checked={options.design.pageNumbers !== false} onChange={(v) => setDesign({ pageNumbers: v })} label="Page numbers" disabled={disabled} />
+                  <Toggle checked={options.assets.showProjectLogo !== false} onChange={(v) => setAssets({ showProjectLogo: v })} label="Project logo" disabled={disabled} />
+                  <Toggle checked={options.design.showAmountInWords === true} onChange={(v) => setDesign({ showAmountInWords: v })} label="Show amount in words" help="Adds the rounded whole-currency amount beneath the cover price." disabled={disabled} />
+                  <Toggle checked={options.design.showMinorUnits === true} onChange={(v) => setDesign({ showMinorUnits: v })} label="Show cents / fils" disabled={disabled} />
+                  <Toggle checked={options.design.showCurrencyCode !== false} onChange={(v) => setDesign({ showCurrencyCode: v })} label="Print currency code" help="Keeps the selected ISO code beside each price." disabled={disabled} />
+                </div>
+                <div className="mt-3 grid gap-3 sm:grid-cols-4">
+                  <div><label className={labelCls}>Body font</label><select value={options.design.bodyFont ?? "sans"} onChange={(e) => setDesign({ bodyFont: e.target.value as OfferDesign["bodyFont"] })} className={inputCls} disabled={disabled}><option value="sans">Sans-serif</option><option value="serif">Serif</option><option value="mono">Monospace</option></select></div>
+                  <div><label className={labelCls}>Body size · {options.design.bodyFontSize ?? 9} pt</label><input type="range" min="7" max="14" step="0.5" value={options.design.bodyFontSize ?? 9} onChange={(e) => setDesign({ bodyFontSize: Number(e.target.value) })} className="mt-2 w-full accent-[#1f8f3a]" disabled={disabled} /></div>
+                  <div><label className={labelCls}>Cover title · {options.design.headingFontSize ?? 42} pt</label><input type="range" min="24" max="54" step="1" value={options.design.headingFontSize ?? 42} onChange={(e) => setDesign({ headingFontSize: Number(e.target.value) })} className="mt-2 w-full accent-[#1f8f3a]" disabled={disabled} /></div>
+                  <div><label className={labelCls}>Unit card title · {options.design.sections?.unit?.headingSize ?? 19} pt</label><input type="range" min="18" max="36" step="1" value={options.design.sections?.unit?.headingSize ?? 19} onChange={(e) => setDesign({ sections: { ...options.design.sections, unit: { ...options.design.sections?.unit, headingSize: Number(e.target.value) } } })} className="mt-2 w-full accent-[#1f8f3a]" disabled={disabled} /></div>
+                </div>
+                <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                  <div><label className={labelCls}>Offer heading</label><input value={options.design.sections?.cover?.heading ?? "Sales Offer"} onChange={(e) => setDesign({ sections: { ...options.design.sections, cover: { ...options.design.sections?.cover, heading: e.target.value } } })} className={inputCls} disabled={disabled} /></div>
+                  <div><label className={labelCls}>Unit card label</label><input value={options.design.unitLabel ?? "Unit No."} onChange={(e) => setDesign({ unitLabel: e.target.value })} className={inputCls} disabled={disabled} /></div>
+                  <div><label className={labelCls}>Date label</label><input value={options.design.dateLabel ?? "Offer Date"} onChange={(e) => setDesign({ dateLabel: e.target.value })} className={inputCls} disabled={disabled} /></div>
+                </div>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <Toggle checked={options.design.showTagline === true} onChange={(v) => setDesign({ showTagline: v })} label="Show optional cover tagline" help="Off by default; prevents the legacy “Invest Wise. Live Better.” line from appearing unexpectedly." disabled={disabled} />
+                  <Toggle checked={options.design.showUnitSpecs !== false} onChange={(v) => setDesign({ showUnitSpecs: v })} label="Show unit specifications" disabled={disabled} />
+                  <Toggle checked={options.design.showCustomer === true} onChange={(v) => setDesign({ showCustomer: v })} label="Print customer name on offer" help="Customer data is included only when explicitly enabled for this offer." disabled={disabled} />
+                </div>
+                <div className="mt-3 rounded-xl border border-ink/8 p-3">
+                  <div className="mb-2 flex items-center justify-between gap-2"><div><div className={labelCls}>Unit specification fields</div><p className="text-[11px] text-mist">Edit the labels, values and visibility for this offer&apos;s unit card.</p></div><Btn size="sm" variant="secondary" disabled={disabled} onClick={() => setDesign({ unitSpecs: [...(options.design.unitSpecs ?? []), { label: "Specification", value: "", visible: true }] })}><Plus className="h-3.5 w-3.5" /> Add field</Btn></div>
+                  {(options.design.unitSpecs?.length ?? 0) === 0 ? <p className="text-[11px] text-mist">Using available unit inventory fields. Add a custom field to control the printed list exactly.</p> : <div className="space-y-2">{options.design.unitSpecs!.map((spec, index) => <div key={index} className="grid grid-cols-[1fr_1fr_auto_auto] items-center gap-2"><input value={spec.label} onChange={(e) => setDesign({ unitSpecs: options.design.unitSpecs!.map((item, i) => i === index ? { ...item, label: e.target.value } : item) })} className={inputCls} placeholder="Label" disabled={disabled} aria-label="Unit specification label" /><input value={spec.value} onChange={(e) => setDesign({ unitSpecs: options.design.unitSpecs!.map((item, i) => i === index ? { ...item, value: e.target.value } : item) })} className={inputCls} placeholder="Value" disabled={disabled} aria-label="Unit specification value" /><input type="checkbox" checked={spec.visible} onChange={(e) => setDesign({ unitSpecs: options.design.unitSpecs!.map((item, i) => i === index ? { ...item, visible: e.target.checked } : item) })} disabled={disabled} aria-label="Show specification" className="h-4 w-4 accent-[#1f8f3a]" /><button type="button" onClick={() => setDesign({ unitSpecs: options.design.unitSpecs!.filter((_, i) => i !== index) })} disabled={disabled} className="rounded p-1 text-mist hover:text-red-600" aria-label="Remove specification"><Trash2 className="h-4 w-4" /></button></div>)}</div>}
+                </div>
+                <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                  <div><label className={labelCls}>Unit card size</label><select value={options.design.unitCardScale ?? "medium"} onChange={(e) => setDesign({ unitCardScale: e.target.value as OfferDesign["unitCardScale"] })} className={inputCls} disabled={disabled}><option value="small">Compact</option><option value="medium">Standard</option><option value="large">Large, readable</option></select></div>
+                  <div><label className={labelCls}>Gallery image size</label><select value={options.design.sections?.gallery?.imageScale ?? "medium"} onChange={(e) => setDesign({ sections: { ...options.design.sections, gallery: { ...options.design.sections?.gallery, imageScale: e.target.value as "small" | "medium" | "large" } } })} className={inputCls} disabled={disabled}><option value="small">Compact images</option><option value="medium">Standard</option><option value="large">Large images</option></select></div>
+                  <div><label className={labelCls}>Floor-plan image size</label><select value={options.design.sections?.floorPlans?.imageScale ?? "medium"} onChange={(e) => setDesign({ sections: { ...options.design.sections, floorPlans: { ...options.design.sections?.floorPlans, imageScale: e.target.value as "small" | "medium" | "large" } } })} className={inputCls} disabled={disabled}><option value="small">Compact</option><option value="medium">Standard</option><option value="large">Large</option></select></div>
+                </div>
+                <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                  <div><label className={labelCls}>Gallery section title</label><input value={options.design.sections?.gallery?.heading ?? "Project Gallery"} onChange={(e) => setDesign({ sections: { ...options.design.sections, gallery: { ...options.design.sections?.gallery, heading: e.target.value } } })} className={inputCls} disabled={disabled} /></div>
+                  <div><label className={labelCls}>Gallery title size · {options.design.sections?.gallery?.headingSize ?? 8} pt</label><input type="range" min="7" max="24" step="1" value={options.design.sections?.gallery?.headingSize ?? 8} onChange={(e) => setDesign({ sections: { ...options.design.sections, gallery: { ...options.design.sections?.gallery, headingSize: Number(e.target.value) } } })} className="mt-2 w-full accent-[#1f8f3a]" disabled={disabled} /></div>
+                  <div><label className={labelCls}>Floor plans title</label><input value={options.design.sections?.floorPlans?.heading ?? "Floor Plans"} onChange={(e) => setDesign({ sections: { ...options.design.sections, floorPlans: { ...options.design.sections?.floorPlans, heading: e.target.value } } })} className={inputCls} disabled={disabled} /></div>
+                </div>                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <div><label className={labelCls}>Price table title</label><input value={options.design.sections?.breakdown?.heading ?? "Price Breakdown"} onChange={(e) => setDesign({ sections: { ...options.design.sections, breakdown: { ...options.design.sections?.breakdown, heading: e.target.value } } })} className={inputCls} disabled={disabled} /></div>
+                  <Toggle checked={options.design.sections?.breakdown?.border !== false} onChange={(v) => setDesign({ sections: { ...options.design.sections, breakdown: { ...options.design.sections?.breakdown, border: v } } })} label="Draw borders around price table cells" disabled={disabled} />
                 </div>
                 <div className="mt-3 grid gap-3 sm:grid-cols-3">
                   <div><label className={labelCls}>Watermark</label><input value={options.design.watermark ?? ""} onChange={(e) => setDesign({ watermark: e.target.value })} className={inputCls} placeholder="e.g. CONFIDENTIAL" disabled={disabled} /></div>
@@ -1086,12 +1394,12 @@ export function SalesOfferBuilder({ offer, initialLead, projects, units, leads, 
                   <Toggle checked={options.design.showScheduleSummary} onChange={(v) => setDesign({ showScheduleSummary: v })} label="Compact payment timeline" disabled={disabled} />
                   <Toggle checked={options.design.showGallery} onChange={(v) => setDesign({ showGallery: v })} label="Project gallery page" disabled={disabled} />
                   <Toggle checked={options.design.showFloorPlans} onChange={(v) => setDesign({ showFloorPlans: v })} label="Floor plan pages" disabled={disabled} />
+                  <Toggle checked={options.design.showCustomer === true} onChange={(v) => setDesign({ showCustomer: v })} label="Customer name on cover" disabled={disabled} />
                   <Toggle checked={options.design.showContact} onChange={(v) => setDesign({ showContact: v })} label="Contact block" disabled={disabled} />
                   <Toggle checked={options.design.showDisclaimer} onChange={(v) => setDesign({ showDisclaimer: v })} label="Disclaimer on the last page" disabled={disabled} />
                 </div>
                 <div className="mt-3 grid gap-3 sm:grid-cols-2">
                   <div><label className={labelCls}>Prepared by</label><input value={options.design.preparedBy ?? ""} onChange={(e) => setDesign({ preparedBy: e.target.value })} className={inputCls} disabled={disabled} /></div>
-                  <div><label className={labelCls}>Tagline</label><input value={options.design.tagline ?? ""} onChange={(e) => setDesign({ tagline: e.target.value })} className={inputCls} disabled={disabled} /></div>
                   <div><label className={labelCls}>Contact phone</label><input value={options.design.contactPhone ?? ""} onChange={(e) => setDesign({ contactPhone: e.target.value })} className={inputCls} disabled={disabled} /></div>
                   <div><label className={labelCls}>Contact email</label><input value={options.design.contactEmail ?? ""} onChange={(e) => setDesign({ contactEmail: e.target.value })} className={inputCls} disabled={disabled} /></div>
                   <div><label className={labelCls}>Website</label><input value={options.design.contactSite ?? ""} onChange={(e) => setDesign({ contactSite: e.target.value })} className={inputCls} disabled={disabled} /></div>
@@ -1187,13 +1495,28 @@ export function SalesOfferBuilder({ offer, initialLead, projects, units, leads, 
 
           {tab === "review" && (
             <div className="space-y-4">
-              <Section title="Screen preview" hint="A live content check. Generate the PDF for the exact client document.">
+              <Section title="Live PDF visual builder" hint="Change offer details or design settings on the left; the rendered PDF updates here. Use the controls to inspect pages, zoom, and keep the canvas open beside your edits." actions={<button type="button" onClick={() => setCanvasOpen((open) => !open)} className="rounded-lg border border-ink/10 px-3 py-2 text-xs font-medium hover:border-brand">{canvasOpen ? "Hide canvas" : "Show canvas"}</button>}>
+                {previewError && <div className="mb-3 rounded-lg bg-amber-50 p-3 text-[12px] text-amber-900 ring-1 ring-amber-200">{previewError}</div>}
+                {canvasOpen && <div className="overflow-hidden rounded-xl border border-ink/10 bg-slate-100">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-ink/10 bg-white px-3 py-2">
+                    <div className="flex items-center gap-2 text-xs"><span className={cn("h-2 w-2 rounded-full", livePdfLoading ? "animate-pulse bg-amber-500" : livePdf ? "bg-emerald-500" : "bg-slate-300")} />{livePdfLoading && !needsInfo ? "Updating live PDF…" : livePdf && !needsInfo ? "Preview synced to current settings" : "Waiting for valid offer details"}</div>
+                    <div className="flex items-center gap-2"><label className="flex items-center gap-1 text-[11px] text-mist">Zoom <select value={previewZoom} onChange={(e) => setPreviewZoom(Number(e.target.value))} className="rounded border border-ink/10 px-1.5 py-1 text-ink"><option value={75}>75%</option><option value={90}>90%</option><option value={100}>100%</option><option value={125}>125%</option><option value={150}>150%</option></select></label><label className="flex items-center gap-1 text-[11px] text-mist">Page <input type="number" min="1" value={previewPage} onChange={(e) => setPreviewPage(Math.max(1, Number(e.target.value) || 1))} className="w-14 rounded border border-ink/10 px-1.5 py-1 text-ink" /></label>{livePdf && <a href={livePdf} download={`${reference || "sales-offer"}-preview.pdf`} className="inline-flex items-center gap-1 rounded-lg border border-ink/10 px-2 py-1.5 text-[11px] hover:border-brand"><Download className="h-3.5 w-3.5" /> PDF</a>}</div>
+                  </div>
+                  {livePdf ? <div className="h-[78vh] min-h-[520px] overflow-auto"><iframe title="Live sales-offer PDF visual builder" src={`${livePdf}#page=${previewPage}&zoom=${previewZoom}`} className="h-full min-h-[520px] w-full bg-slate-100" /></div> : <div className="flex h-72 items-center justify-center text-[13px] text-mist">{needsInfo ? "Fix payment validation to preview the PDF." : "Rendering the live PDF preview…"}</div>}
+                </div>}
+              </Section>
+
+              <Section title="Screen summary" hint="Quick readability check. The embedded PDF above shows the exact current layout.">
                 <div className="overflow-hidden rounded-2xl border border-ink/10" style={{ background: options.design.paper }}>
                   <div className="relative p-5" style={{ background: options.design.ink, color: "#fff" }}>
-                    {options.assets.includeMrHomeLogo && <div className="mb-2 text-[10px] font-bold tracking-widest">MR.HOME</div>}
-                    <div className="text-[9px] uppercase tracking-[0.2em]" style={{ color: options.design.accent }}>{options.design.tagline}</div>
-                    <div className="mt-1 text-[24px] font-bold leading-tight">{project?.name ?? "Project name"}</div>
+                    <div className="flex items-start justify-between gap-4">
+                      {options.assets.includeMrHomeLogo && <img src={options.assets.mrHomeLogo || "/brand/logo-dark.png"} alt="Mr Home Real Estate" className="mb-2 h-8 max-w-28 object-contain object-left" />}
+                      {options.assets.showProjectLogo !== false && options.assets.projectLogo && <img src={options.assets.projectLogo} alt={`${project?.name ?? "Project"} logo`} className="mb-2 h-9 max-w-32 object-contain object-right" />}
+                    </div>
+                    <div className="text-[9px] font-semibold uppercase tracking-[0.18em]" style={{ color: options.design.accent }}>{options.design.sections?.cover?.heading || "Sales Offer"}</div>
+                    <div className="mt-1 text-[24px] font-bold leading-tight" style={{ fontFamily: options.design.displayFont === "serif" ? "Georgia, serif" : "Arial, sans-serif" }}>{project?.name ?? "Project name"}</div>
                     <div className="mt-1 text-[11px] opacity-80">{[project?.city, project?.country].filter(Boolean).join(", ") || "Location"}</div>
+                    <div className="mt-2 text-[10px] font-medium opacity-75">{options.design.dateLabel || "Offer Date"} · {new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "long", year: "numeric" }).format(new Date())}</div>
                     <div className="mt-4 flex flex-wrap items-end justify-between gap-2">
                       <div><div className="text-[8px] uppercase tracking-wider opacity-70">Unit</div><div className="text-[16px] font-semibold">{unit.unitNo || "—"}</div><div className="text-[10px] opacity-80">{[unit.type, unit.bedrooms ? `${unit.bedrooms} bed` : "", unit.area ? `${unit.area} ${unit.areaUnit ?? ""}` : ""].filter(Boolean).join(" · ")}</div></div>
                       <div className="rounded-lg p-3 text-right" style={{ background: "rgba(255,255,255,0.12)" }}><div className="text-[8px] uppercase tracking-wider opacity-70">From</div><div className="text-[18px] font-bold" style={{ color: options.design.accent }}>{formatMinor(Math.min(...(calc.plans.length ? calc.plans.map((p) => p.contractPriceMinor) : [0])), currency)} {currency}</div></div>

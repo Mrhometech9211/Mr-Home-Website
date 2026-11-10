@@ -387,6 +387,8 @@ const newsSelect = {
   seoTitle: newsArticles.seoTitle,
   seoDescription: newsArticles.seoDescription,
   seoKeywords: newsArticles.seoKeywords,
+  builderDraft: newsArticles.builderDraft,
+  builderPublished: newsArticles.builderPublished,
   createdAt: newsArticles.createdAt,
   updatedAt: newsArticles.updatedAt,
   marketName: markets.name,

@@ -12,6 +12,8 @@ import { Button3D } from "@/components/ui/Button3D";
 import { Reveal } from "@/components/site/Reveal";
 import { ProjectCard } from "@/components/site/ProjectCard";
 import { InquiryForm } from "@/components/site/InquiryForm";
+import { PageBuilder } from "@/components/site/PageBuilder";
+import { safeSections } from "@/lib/page-builder";
 
 export const dynamic = "force-dynamic";
 type Params = Promise<{ slug: string }>;
@@ -32,6 +34,9 @@ export default async function MarketPage({ params }: { params: Params }) {
   const wa = buildWhatsAppLink(settings.whatsapp, fillTemplate(settings.whatsappMarketMessage, { market: market.name }));
   const crumbs = [{ name: "Home", href: "/" }, { name: "Markets", href: "/markets" }, { name: market.name, href: `/markets/${market.slug}` }];
   const ld = { "@context": "https://schema.org", "@type": "Place", name: market.name, description: market.description, geo: { "@type": "GeoCoordinates", latitude: market.latitude, longitude: market.longitude }, image: market.coverImage };
+  // Once an administrator publishes builder sections they replace the market
+  // body (overview, cities, map, projects). The hero and statistics band stay.
+  const customSections = safeSections(market.builderPublished);
 
   return (
     <article>
@@ -64,6 +69,10 @@ export default async function MarketPage({ params }: { params: Params }) {
         </div>
       )}
 
+      {customSections.length > 0 ? (
+        <PageBuilder sections={customSections} source={`market:${market.slug}`} />
+      ) : (
+      <>
       <div className="mx-auto grid max-w-[1400px] gap-12 px-4 py-20 sm:px-6 lg:grid-cols-12">
         <div className="space-y-12 lg:col-span-7">
           <Reveal><h2 className="display text-[clamp(1.6rem,3vw,2.2rem)] text-ink">Market overview</h2><p className="mt-5 text-[16px] leading-relaxed text-charcoal/85">{market.description}</p></Reveal>
@@ -108,6 +117,8 @@ export default async function MarketPage({ params }: { params: Params }) {
           )}
         </div>
       </section>
+      </>
+      )}
     </article>
   );
 }

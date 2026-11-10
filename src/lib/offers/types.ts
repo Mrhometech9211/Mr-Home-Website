@@ -93,20 +93,25 @@ export type OfferAssets = {
   mrHomeLogo?: string;
   /** Asked per offer unless the prompt explicitly states the choice. */
   includeMrHomeLogo: boolean;
+  showProjectLogo?: boolean;
 };
 
-export type OfferCoverStyle = "photo" | "split" | "solid";
+export type OfferCoverStyle = "photo" | "split" | "solid" | "frame";
 export type OfferDensity = "comfortable" | "compact";
 export type OfferDisplayFont = "sans" | "serif";
+export type OfferPdfFont = "sans" | "serif" | "mono";
+export type OfferSectionStyle = { heading?: string; fontSize?: number; headingSize?: number; border?: boolean; imageScale?: "small" | "medium" | "large" };
+export type OfferTheme = "premium" | "minimal" | "bold" | "emerald" | "midnight" | "editorial" | "glass" | "horizon" | "terrace" | "monolith";
 
 export type OfferDesign = {
-  theme: "premium" | "minimal" | "bold";
+  theme: OfferTheme;
   accent: string;
   ink: string;
   paper: string;
   showPriceBreakdown: boolean;
   showGallery: boolean;
   showFloorPlans: boolean;
+  showCustomer?: boolean;
   showContact: boolean;
   showDisclaimer: boolean;
   showScheduleSummary: boolean;
@@ -118,8 +123,27 @@ export type OfferDesign = {
   headline?: string;
   /** Small line above the headline, e.g. "PRESTIGIOUS LIVING AT". */
   eyebrow?: string;
-  /** Headline / section-title face. Body text always stays clean sans. */
+  /** Headline / section-title face. */
   displayFont?: OfferDisplayFont;
+  /** Typography for all offer copy. Standard embedded PDF fonts only. */
+  bodyFont?: OfferPdfFont;
+  bodyFontSize?: number;
+  headingFontSize?: number;
+  /** Compact labels and figure presentation on the cover/cards. */
+  unitLabel?: string;
+  showAmountInWords?: boolean;
+  showTagline?: boolean;
+  showUnitSpecs?: boolean;
+  unitCardScale?: "small" | "medium" | "large";
+  unitSpecs?: { label: string; value: string; visible: boolean }[];
+  taglinePosition?: "belowTitle" | "footer";
+  maxPages?: 2 | 3 | 4 | 5;
+  /** Named section controls; keys are cover, unit, plans, breakdown, gallery, floorPlans, footer. */
+  sections?: Partial<Record<"cover" | "unit" | "plans" | "breakdown" | "gallery" | "floorPlans" | "footer", OfferSectionStyle>>;
+  /** Currency-aware integer display by default; enable cents/fils only if desired. */
+  showMinorUnits?: boolean;
+  showCurrencyCode?: boolean;
+  dateLabel?: string;
   /** Vertical rhythm of plan cards and tables. */
   density?: OfferDensity;
   /** Unit number / area / view strip on the cover. */
@@ -217,7 +241,7 @@ export type PlanCalculation = {
   installmentAmountMinor: number;
   installmentCount: number;
   installmentsFrequency?: OfferFrequency;
-  fees: { label: string; amount: number; amountMinor: number }[];
+  fees: { label: string; amount: number; amountMinor: number; type: "percent" | "amount"; value: number }[];
   feesTotal: number;
   feesTotalMinor: number;
   vatTotal: number;

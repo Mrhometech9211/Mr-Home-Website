@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, ExternalLink, Trash2, Copy } from "lucide-react";
+import { ArrowLeft, ExternalLink, Trash2, Copy, LayoutTemplate } from "lucide-react";
 import { RESOURCES } from "@/lib/resources";
 import { slugify } from "@/lib/utils";
 import { api, Btn, Confirm, useToast } from "./ui";
@@ -135,6 +135,11 @@ export function ResourceForm({ resourceKey, id, canWrite, inline, onSaved }: { r
           </div>
           <div className="flex flex-wrap gap-2">
             {def.previewPath && id !== "new" && <a href={def.previewPath(values)} target="_blank" rel="noopener noreferrer" className="inline-flex h-10 items-center gap-2 rounded-lg border border-ink/10 bg-white px-3 text-[13px] hover:border-ink/25"><ExternalLink className="h-4 w-4" /> {values.published === false ? "Preview draft" : "View live"}</a>}
+            {id !== "new" && (resourceKey === "markets" || resourceKey === "news") && (
+              <Link href={`/admin/${resourceKey}/${id}/sections`} className="inline-flex h-10 items-center gap-2 rounded-lg border border-brand/30 bg-brand/5 px-3 text-[13px] font-medium text-brand hover:border-brand">
+                <LayoutTemplate className="h-4 w-4" /> Page layout
+              </Link>
+            )}
             {def.duplicatable && id !== "new" && canWrite && <Btn type="button" variant="secondary" onClick={duplicate}><Copy className="h-4 w-4" /> Duplicate</Btn>}
             {id !== "new" && canWrite && <Btn type="button" variant="danger" onClick={() => setConfirmDelete(true)}><Trash2 className="h-4 w-4" /></Btn>}
           </div>

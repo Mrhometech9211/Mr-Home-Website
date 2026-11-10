@@ -147,6 +147,9 @@ export const markets = pgTable(
     featured: boolean("featured").notNull().default(false),
     published: boolean("published").notNull().default(true),
     order: integer("order").notNull().default(0),
+    /** Visual-builder sections for this market page (draft / published). */
+    builderDraft: jsonb("builder_draft").$type<unknown[]>().default([]),
+    builderPublished: jsonb("builder_published").$type<unknown[]>().default([]),
     seoTitle: text("seo_title"),
     seoDescription: text("seo_description"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -320,6 +323,23 @@ export const leadTasks = pgTable("lead_tasks", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+/** Private admin planner items. Reminders are delivered by the active browser session. */
+export const plannerItems = pgTable("planner_items", {
+  id: serial("id").primaryKey(),
+  ownerId: integer("owner_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  kind: text("kind").$type<"task" | "meeting">().notNull().default("task"),
+  notes: text("notes").notNull().default(""),
+  startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
+  endsAt: timestamp("ends_at", { withTimezone: true }),
+  reminderAt: timestamp("reminder_at", { withTimezone: true }),
+  alarmEnabled: boolean("alarm_enabled").notNull().default(false),
+  sound: text("sound").$type<"chime" | "pulse" | "bell">().notNull().default("chime"),
+  done: boolean("done").notNull().default(false),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [index("planner_owner_start_idx").on(t.ownerId, t.startsAt)]);
+
 export const leadActivities = pgTable(
   "lead_activities",
   {
@@ -417,6 +437,9 @@ export const newsArticles = pgTable(
     seoTitle: text("seo_title"),
     seoDescription: text("seo_description"),
     seoKeywords: text("seo_keywords"),
+    /** Visual-builder sections for the article body (draft / published). */
+    builderDraft: jsonb("builder_draft").$type<unknown[]>().default([]),
+    builderPublished: jsonb("builder_published").$type<unknown[]>().default([]),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

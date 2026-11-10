@@ -15,7 +15,7 @@ import {
   type PDFImage,
   type PDFPage,
 } from "pdf-lib";
-import { formatMinor } from "./money";
+import { amountInWords, formatMinor } from "./money";
 import type { OfferCalculation, OfferSnapshotInput, PlanCalculation } from "./types";
 
 /**
@@ -43,6 +43,7 @@ type Ctx = {
   display: PDFFont;
   /** Vertical rhythm multiplier for cards and tables. */
   density: number;
+  fontScale: number;
   images: ImageMap;
   snapshot: OfferSnapshotInput;
   calc: OfferCalculation;
@@ -112,8 +113,13 @@ function fit(text: string, font: PDFFont, size: number, maxWidth: number): strin
   return `${out.trim()}...`;
 }
 
-function money(minor: number, currency: string) {
-  return formatMinor(minor, currency);
+function money(minor: number, currency: string, design?: OfferSnapshotInput["design"]) {
+  const numeric = formatMinor(minor, currency, { showMinorUnits: design?.showMinorUnits === true });
+  return design?.showCurrencyCode === false ? numeric : `${numeric} ${currency.toUpperCase()}`;
+}
+
+function numberWords(minor: number, currency: string, design: OfferSnapshotInput["design"]): string {
+  return design.showAmountInWords ? amountInWords(minor, currency) ?? "" : "";
 }
 
 function pctOf(partMinor: number, totalMinor: number): string {
@@ -142,7 +148,7 @@ function text(
   y: number,
   opts: { size?: number; font?: PDFFont; color?: ReturnType<typeof rgb>; maxWidth?: number; align?: "left" | "right" | "center"; lineHeight?: number } = {},
 ): number {
-  const size = opts.size ?? 10;
+  const size = (opts.size ?? 10) * ctx.fontScale;
   const font = opts.font ?? ctx.font;
   const color = opts.color ?? ctx.ink;
   const maxWidth = opts.maxWidth ?? A4.w - M * 2;
@@ -226,7 +232,12 @@ async function loadImages(ctx: CtxWithOrigin, urls: (string | undefined)[]) {
   await Promise.all(
     unique.map(async (url) => {
       if (ctx.images.has(url)) return;
-      const asset = await fetchImage(url, ctx.origin);
+      let asset = await fetchImage(url, ctx.origin);
+      // pdf-lib cannot embed SVG. The supplied brand assets have raster twins;
+      // map the chosen logo URL to its safe PNG so it visibly renders in PDFs.
+      if (!asset && /\/brand\/logo(?:-dark)?\.svg(?:$|\?)/i.test(url)) {
+        asset = await fetchImage("/brand/logo-dark.png", ctx.origin);
+      }
       if (!asset) return;
       try {
         const img = asset.type === "image/png" ? await ctx.pdf.embedPng(asset.bytes) : await ctx.pdf.embedJpg(asset.bytes);
@@ -253,6 +264,17 @@ function cover(ctx: CtxWithOrigin) {
     drawImageCover(page, coverImg, 0, 0, A4.w, A4.h);
     page.drawRectangle({ x: 0, y: 0, width: A4.w, height: A4.h, color: ctx.ink, opacity: overlay });
     page.drawRectangle({ x: 0, y: 0, width: A4.w, height: 250, color: ctx.ink, opacity: 0.28 });
+  } else if (style === "frame" && coverImg) {
+    // A mounted print: full-bleed photography held inside an ink frame with a
+    // fine accent rule, so the cover reads as a designed document.
+    drawImageCover(page, coverImg, 0, 0, A4.w, A4.h);
+    page.drawRectangle({ x: 0, y: 0, width: A4.w, height: A4.h, color: ctx.ink, opacity: overlay });
+    const band = 20;
+    page.drawRectangle({ x: band / 2, y: band / 2, width: A4.w - band, height: A4.h - band, borderColor: ctx.ink, borderWidth: band });
+    page.drawRectangle({ x: band + 4, y: band + 4, width: A4.w - (band + 4) * 2, height: A4.h - (band + 4) * 2, borderColor: ctx.accent, borderWidth: 1.1 });
+    const corner = 26;
+    page.drawRectangle({ x: band + 4, y: A4.h - band - 4 - 2.4, width: corner, height: 2.4, color: ctx.accent });
+    page.drawRectangle({ x: A4.w - band - 4 - corner, y: band + 4, width: corner, height: 2.4, color: ctx.accent });
   } else if (style === "split" && coverImg) {
     // Solid type panel on the left, photography on the right.
     page.drawRectangle({ x: 0, y: 0, width: A4.w, height: A4.h, color: ctx.ink });
@@ -274,28 +296,29 @@ function cover(ctx: CtxWithOrigin) {
   const white = rgb(1, 1, 1);
   const soft = rgb(0.86, 0.9, 0.87);
 
-  // Brand row (Mr Home logo only when explicitly requested for THIS offer).
-  let brandX = M;
-  if (ctx.snapshot.assets.includeMrHomeLogo && ctx.snapshot.assets.mrHomeLogo) {
-    const img = ctx.images.get(ctx.snapshot.assets.mrHomeLogo);
+  // Brand row: the opt-in Mr Home mark is rasterized for pdf-lib (SVG is not
+  // supported). Use the dark-on-transparent raster on this dark cover so the
+  // original logo text is not lost against the background.
+  const mrHomeLogoUrl = ctx.snapshot.assets.mrHomeLogo || "/brand/logo-dark.png";
+  if (ctx.snapshot.assets.includeMrHomeLogo) {
+    const img = ctx.images.get(mrHomeLogoUrl) ?? ctx.images.get("/brand/logo-dark.png") ?? ctx.images.get("/brand/logo.png");
     if (img) {
-      const h = 30;
-      const w = (img.width / img.height) * h;
-      page.drawImage(img, { x: M, y: A4.h - M - h, width: Math.min(w, 150), height: h });
-      brandX = M + Math.min(w, 150) + 14;
+      const logoW = 168;
+      const logoH = 46;
+      drawImageContain(page, img, M, A4.h - M - logoH, logoW, logoH);
+    } else {
+      text(ctx, "MR.HOME", M, A4.h - M - 18, { size: 12, font: ctx.bold, color: white });
+      text(ctx, "REAL ESTATE", M, A4.h - M - 31, { size: 6, font: ctx.bold, color: soft });
     }
   }
-  const projectLogo = ctx.snapshot.assets.projectLogo ? ctx.images.get(ctx.snapshot.assets.projectLogo) : undefined;
+  const projectLogo = ctx.snapshot.assets.showProjectLogo === false || !ctx.snapshot.assets.projectLogo ? undefined : ctx.images.get(ctx.snapshot.assets.projectLogo);
   if (projectLogo) {
-    const h = 34;
-    const w = (projectLogo.width / projectLogo.height) * h;
-    page.drawImage(projectLogo, { x: A4.w - M - Math.min(w, 170), y: A4.h - M - h, width: Math.min(w, 170), height: h });
+    const boxW = 170;
+    const boxH = 40;
+    drawImageContain(page, projectLogo, A4.w - M - boxW, A4.h - M - boxH, boxW, boxH);
   } else {
-    text(ctx, (ctx.snapshot.project?.developer || "MR.HOME").toUpperCase(), A4.w - M - 180, A4.h - M, { size: 9, font: ctx.bold, color: white, maxWidth: 180, align: "right" });
+    text(ctx, (ctx.snapshot.project?.developer || "").toUpperCase(), A4.w - M - 180, A4.h - M, { size: 9, font: ctx.bold, color: white, maxWidth: 180, align: "right" });
     text(ctx, "PRIVATE & CONFIDENTIAL", A4.w - M - 180, A4.h - M - 14, { size: 7.5, color: soft, maxWidth: 180, align: "right" });
-  }
-  if (brandX === M && ctx.snapshot.assets.includeMrHomeLogo) {
-    text(ctx, "MR.HOME", brandX, A4.h - M - 2, { size: 15, font: ctx.bold, color: white });
   }
 
   // Thin rule under the brand row gives the type block a deliberate frame.
@@ -310,17 +333,18 @@ function cover(ctx: CtxWithOrigin) {
   const narrowCover = style === "split";
   const textWidth = narrowCover ? A4.w * 0.46 - M * 1.4 : A4.w - M * 2 - 40;
   let y = narrowCover ? A4.h * 0.7 : A4.h * 0.74;
-  if (ctx.snapshot.design?.tagline) {
-    text(ctx, ctx.snapshot.design.tagline.toUpperCase(), M, y, { size: 8, font: ctx.bold, color: ctx.accent, maxWidth: textWidth });
-    y -= 26;
+  const offerLabel = safe(ctx.snapshot.design?.sections?.cover?.heading || "Sales Offer");
+  if (offerLabel) {
+    text(ctx, offerLabel.toUpperCase(), M, y, { size: 9, font: ctx.bold, color: ctx.accent, maxWidth: textWidth });
+    y -= 22;
   }
-  const eyebrow = safe(ctx.snapshot.design?.eyebrow || "Prestigious living at");
-  if (eyebrow) {
+  const eyebrow = ctx.snapshot.design?.showTagline ? safe(ctx.snapshot.design?.tagline || ctx.snapshot.design?.eyebrow || "") : "";
+  if (eyebrow && ctx.snapshot.design?.taglinePosition !== "footer") {
     text(ctx, eyebrow.toUpperCase(), M, y, { size: 8.5, font: ctx.bold, color: soft, maxWidth: textWidth });
     y -= 14;
   }
   const title = safe(ctx.snapshot.design?.headline || ctx.snapshot.project?.name || ctx.snapshot.title || "Private Residence");
-  const titleSize = narrowCover ? 28 : title.length > 26 ? 34 : 42;
+  const titleSize = Math.min(54, Math.max(24, ctx.snapshot.design?.headingFontSize ?? (narrowCover ? 28 : title.length > 26 ? 34 : 42)));
   const titleLines = wrap(title.toUpperCase(), ctx.display, titleSize, textWidth);
   for (const line of titleLines.slice(0, 3)) {
     ctx.page.drawText(line, { x: M, y: y - titleSize, size: titleSize, font: ctx.display, color: white });
@@ -331,7 +355,17 @@ function cover(ctx: CtxWithOrigin) {
 
   const location = [ctx.snapshot.project?.city, ctx.snapshot.project?.country].filter(Boolean).join(", ");
   if (location) {
-    text(ctx, `LOCATION  ${location.toUpperCase()}`, M, y, { size: 8.5, font: ctx.bold, color: soft, maxWidth: 360 });
+    text(ctx, `LOCATION  ${location.toUpperCase()}`, M, y, { size: ctx.snapshot.design.sections?.cover?.fontSize ?? 8.5, font: ctx.bold, color: soft, maxWidth: textWidth });
+    y -= 17;
+  }
+  if (ctx.snapshot.date) {
+    const date = new Date(`${ctx.snapshot.date}T00:00:00Z`);
+    const printedDate = /^\d{4}-\d{2}-\d{2}$/.test(ctx.snapshot.date) && !Number.isNaN(date.getTime()) ? new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "long", year: "numeric", timeZone: "UTC" }).format(date) : ctx.snapshot.date;
+    text(ctx, `${safe(ctx.snapshot.design.dateLabel || "Offer Date").toUpperCase()}  ${printedDate}`, M, y, { size: 8, font: ctx.bold, color: soft, maxWidth: textWidth });
+    y -= 16;
+  }
+  if (ctx.snapshot.design.showCustomer && ctx.snapshot.customer?.name) {
+    text(ctx, `PREPARED FOR  ${safe(ctx.snapshot.customer.name)}`, M, y, { size: 8, font: ctx.bold, color: soft, maxWidth: textWidth });
   }
 
   // Real project amenities only — never invented selling points.
@@ -352,22 +386,42 @@ function cover(ctx: CtxWithOrigin) {
   // Unit + price cards at the bottom (optional unit strip).
   const unit = ctx.snapshot.unit ?? {};
   const cheapest = ctx.calc.plans.length ? [...ctx.calc.plans].sort((a, b) => a.contractPriceMinor - b.contractPriceMinor)[0] : null;
-  const unitPriceLine = `List ${money(ctx.calc.unitPriceMinor, ctx.calc.currency)}`;
-  const priceCaption = cheapest && cheapest.discountAmountMinor > 0 ? `${unitPriceLine}  -  ${pctOf(cheapest.discountAmountMinor, cheapest.listPriceMinor)} discount` : unitPriceLine;
+  // The cover separates the list price from the discounted contract price so a
+  // reader never mistakes a promotional figure for the asking price.
+  const finalMinor = cheapest?.contractPriceMinor ?? ctx.calc.unitPriceMinor;
+  const displayedMinor = ctx.calc.plans.length > 1 ? finalMinor : cheapest?.listPriceMinor ?? ctx.calc.unitPriceMinor;
+  const discountLabel = cheapest && cheapest.discountAmountMinor > 0 ? pctOf(cheapest.discountAmountMinor, cheapest.listPriceMinor) : "";
+  const priceCaption = discountLabel
+    ? `Given ${discountLabel} discount  -  Final ${money(finalMinor, ctx.calc.currency, ctx.snapshot.design)}`
+    : "No discount applied";
   const drawUnitCard = (x: number, cy: number, w: number, h: number) => {
     page.drawRectangle({ x, y: cy, width: w, height: h, color: white, opacity: 0.94 });
     page.drawRectangle({ x, y: cy, width: 5, height: h, color: ctx.accent });
-    text(ctx, "UNIT NO.", x + 18, cy + h - 20, { size: 6.8, font: ctx.bold, color: ctx.muted });
-    text(ctx, unit.unitNo || "To be confirmed", x + 18, cy + h - 32, { size: 19, font: ctx.display, color: ctx.ink, maxWidth: w - 30 });
-    const u1 = [unit.type, unit.bedrooms ? `${unit.bedrooms} bed` : "", unit.area ? `${unit.area} ${unit.areaUnit || "sqft"}` : ""].filter(Boolean).join("  -  ");
-    text(ctx, u1 || "Unit details to be confirmed", x + 18, cy + h - 58, { size: 7.4, color: ctx.ink, maxWidth: w - 30 });
-    text(ctx, [unit.floor ? `Floor ${unit.floor}` : "", unit.view ? `View ${unit.view}` : ""].filter(Boolean).join("  -  "), x + 18, cy + 22, { size: 7.2, color: ctx.muted, maxWidth: w - 30 });
+    text(ctx, (ctx.snapshot.design.unitLabel || "Unit No.").toUpperCase(), x + 18, cy + h - 20, { size: 6.8, font: ctx.bold, color: ctx.muted });
+    text(ctx, unit.unitNo || "To be confirmed", x + 18, cy + h - 32, { size: ctx.snapshot.design.sections?.unit?.headingSize ?? 19, font: ctx.display, color: ctx.ink, maxWidth: w - 30 });
+    const defaultSpecs = [
+      { label: "Type", value: unit.type || "" },
+      { label: "Bedrooms", value: unit.bedrooms || "" },
+      { label: "Area", value: unit.area ? `${unit.area} ${unit.areaUnit || "sqft"}` : "" },
+      { label: "Floor", value: unit.floor || "" },
+      { label: "View", value: unit.view || "" },
+    ];
+    const customSpecs = ctx.snapshot.design.unitSpecs;
+    const specs = ctx.snapshot.design.showUnitSpecs === false ? [] : (customSpecs?.length ? customSpecs.filter((item) => item.visible && item.label.trim() && item.value.trim()).map((item) => `${item.label.trim()}: ${item.value.trim()}`) : defaultSpecs.filter((item) => item.value).map((item) => `${item.label}: ${item.value}`));
+    const specSize = ctx.snapshot.design.unitCardScale === "small" ? 6 : ctx.snapshot.design.unitCardScale === "large" ? 8.8 : 7.4;
+    const maxSpecs = ctx.snapshot.design.unitCardScale === "small" ? 3 : ctx.snapshot.design.unitCardScale === "large" ? 7 : 5;
+    specs.slice(0, maxSpecs).forEach((spec, index) => {
+      text(ctx, spec, x + 18, cy + h - 54 - index * (specSize + 5), { size: specSize, color: index === 0 ? ctx.ink : ctx.muted, maxWidth: w - 30 });
+    });
+    if (!specs.length && ctx.snapshot.design.showUnitSpecs !== false) text(ctx, "Unit details to be confirmed", x + 18, cy + h - 58, { size: 7.4, color: ctx.ink, maxWidth: w - 30 });
   };
   const drawPriceCard = (x: number, cy: number, w: number, h: number) => {
     page.drawRectangle({ x, y: cy, width: w, height: h, color: ctx.ink, opacity: 0.95 });
     text(ctx, ctx.calc.plans.length > 1 ? "PRICES FROM" : "UNIT PRICE", x + 18, cy + h - 20, { size: 6.8, font: ctx.bold, color: soft });
-    text(ctx, money(cheapest?.contractPriceMinor ?? ctx.calc.unitPriceMinor, ctx.calc.currency), x + 18, cy + h - 36, { size: Math.min(22, (w - 36) / 8.4), font: ctx.display, color: white, maxWidth: w - 30 });
-    text(ctx, `(${ctx.calc.currency})`, x + 18, cy + h - 60, { size: 7, color: soft });
+    const displayPrice = money(displayedMinor, ctx.calc.currency, ctx.snapshot.design);
+    text(ctx, displayPrice, x + 18, cy + h - 36, { size: Math.min(22, (w - 36) / 8.4), font: ctx.display, color: white, maxWidth: w - 30 });
+    const words = numberWords(displayedMinor, ctx.calc.currency, ctx.snapshot.design);
+    if (words) text(ctx, words, x + 18, cy + h - 57, { size: 6.2, color: soft, maxWidth: w - 30 });
     text(ctx, priceCaption, x + 18, cy + 24, { size: 6.8, color: soft, maxWidth: w - 30 });
   };
   if (ctx.snapshot.design.showUnitStrip !== false) {
@@ -389,7 +443,7 @@ function cover(ctx: CtxWithOrigin) {
     page.drawRectangle({ x: M, y: 128, width: A4.w - M * 2, height: 54, color: ctx.ink, opacity: 0.94 });
     page.drawRectangle({ x: M, y: 128, width: 5, height: 54, color: ctx.accent });
     text(ctx, ctx.calc.plans.length > 1 ? "PRICES FROM" : "UNIT PRICE", M + 18, 166, { size: 6.8, font: ctx.bold, color: soft });
-    text(ctx, money(cheapest?.contractPriceMinor ?? ctx.calc.unitPriceMinor, ctx.calc.currency), M + 18, 146, { size: 16, font: ctx.display, color: white, maxWidth: 260 });
+    text(ctx, money(cheapest?.contractPriceMinor ?? ctx.calc.unitPriceMinor, ctx.calc.currency, ctx.snapshot.design), M + 18, 146, { size: 16, font: ctx.display, color: white, maxWidth: 260 });
     if (ctx.snapshot.design.ctaText) text(ctx, safe(ctx.snapshot.design.ctaText).toUpperCase(), A4.w - M - 200, 160, { size: 7.4, font: ctx.bold, color: ctx.accent, maxWidth: 200, align: "right" });
     if (ctx.snapshot.design.ctaNote) text(ctx, safe(ctx.snapshot.design.ctaNote), A4.w - M - 200, 146, { size: 7, color: soft, maxWidth: 200, align: "right" });
   }
@@ -439,7 +493,7 @@ function planCard(ctx: CtxWithOrigin, plan: PlanCalculation, x: number, y: numbe
   cursor -= 20;
 
   if (plan.discountAmountMinor > 0) {
-    text(ctx, `${plan.discount.type === "percent" ? `${plan.discount.value}%` : money(plan.discountAmountMinor, currency)} DISCOUNT`, x + pad, cursor, { size: 8.2, font: ctx.bold, color: ctx.accent });
+    text(ctx, `${plan.discount.type === "percent" ? `${plan.discount.value}%` : money(plan.discountAmountMinor, currency, ctx.snapshot.design)} (GIVEN DISCOUNT)`, x + pad, cursor, { size: 8.2, font: ctx.bold, color: ctx.accent });
     cursor -= 18;
   }
 
@@ -451,17 +505,17 @@ function planCard(ctx: CtxWithOrigin, plan: PlanCalculation, x: number, y: numbe
   const freq = FREQUENCY_LABEL[plan.installmentsFrequency ?? "monthly"] ?? "Monthly";
   row(
     `${freq} installments`,
-    plan.installmentCount > 0 ? `${money(plan.installmentAmountMinor, currency)}${plan.installmentsFrequency === "monthly" ? ` / mo x ${plan.installmentCount}` : ` x ${plan.installmentCount}`}` : "-",
+    plan.installmentCount > 0 ? `${money(plan.installmentAmountMinor, currency, ctx.snapshot.design)}${plan.installmentsFrequency === "monthly" ? ` / month x ${plan.installmentCount}` : ` x ${plan.installmentCount}`}` : "-",
   );
-  row("During construction", `${money(plan.duringConstructionMinor, currency)}  (${pctOf(plan.duringConstructionMinor, plan.contractPriceMinor)})`);
-  row("Handover", `${money(plan.handoverPaymentMinor, currency)}  (${pctOf(plan.handoverPaymentMinor, plan.contractPriceMinor)})`);
+  row("During construction", `${money(plan.duringConstructionMinor, currency, ctx.snapshot.design)}  (${pctOf(plan.duringConstructionMinor, plan.contractPriceMinor)})`);
+  row("Handover payment", `${money(plan.handoverPaymentMinor, currency, ctx.snapshot.design)}  (${pctOf(plan.handoverPaymentMinor, plan.contractPriceMinor)})`);
 
   const footH = 42;
   ctx.page.drawRectangle({ x, y: y - h, width: w, height: footH, color: ctx.ink });
-  text(ctx, `FINAL PRICE (${currency})`, x + pad, y - h + footH - 8, { size: 5.8, font: ctx.bold, color: rgb(0.82, 0.87, 0.83) });
+  text(ctx, `FINAL PRICE${ctx.snapshot.design.showCurrencyCode === false ? "" : ` (${currency})`}`, x + pad, y - h + footH - 8, { size: 5.8, font: ctx.bold, color: rgb(0.82, 0.87, 0.83) });
   // text() positions the baseline at (cursor - size), so reserve the full
   // cap height before the card edge to keep the figure inside the dark band.
-  text(ctx, money(plan.contractPriceMinor, currency), x + pad, y - h + 26, { size: 12, font: ctx.display, color: rgb(1, 1, 1), maxWidth: w - pad * 2 });
+  text(ctx, money(plan.contractPriceMinor, currency, ctx.snapshot.design), x + pad, y - h + 26, { size: 12, font: ctx.display, color: rgb(1, 1, 1), maxWidth: w - pad * 2 });
   return h;
 }
 
@@ -531,21 +585,24 @@ function plansPage(ctx: CtxWithOrigin) {
 
 /* --------------------------- price breakdown ------------------------------- */
 
-function breakdownTable(ctx: CtxWithOrigin, plans: PlanCalculation[]) {
-  const rowsNeeded = 4 + (plans.some((p) => p.feesTotalMinor > 0) ? 1 : 0) + (plans.some((p) => p.vatTotalMinor > 0) ? 1 : 0) + 2;
+function breakdownTable(ctx: CtxWithOrigin, plans: PlanCalculation[], scale = 1) {
+  const feeLabels = [...new Set(plans.flatMap((p) => p.fees.filter((fee) => fee.amountMinor > 0).map((fee) => fee.label)))];
+  const rowsNeeded = 6 + feeLabels.length + (plans.some((p) => p.vatTotalMinor > 0) ? 1 : 0);
   ensure(ctx, 30 + rowsNeeded * 21 * ctx.density + 26);
   const page = ctx.page;
   let y = ctx.y;
 
   page.drawRectangle({ x: M, y: y - 28, width: A4.w - M * 2, height: 28, color: ctx.accent });
-  text(ctx, "PRICE BREAKDOWN", M + 8, y - 9, { size: 7.4, font: ctx.display, color: rgb(1, 1, 1) });
+  if (ctx.snapshot.design.sections?.breakdown?.border !== false) page.drawRectangle({ x: M, y: y - 28, width: A4.w - M * 2, height: 28, borderColor: ctx.ink, borderWidth: 0.7 });
+  text(ctx, (ctx.snapshot.design.sections?.breakdown?.heading || "PRICE BREAKDOWN").toUpperCase(), M + 8, y - 9, { size: ctx.snapshot.design.sections?.breakdown?.headingSize ?? 7.4, font: ctx.display, color: rgb(1, 1, 1) });
   text(ctx, `${plans.length} plan${plans.length > 1 ? "s" : ""}  -  ${ctx.calc.currency}`, M + 8, y - 19, { size: 5.6, color: rgb(0.9, 0.95, 0.9) });
   y -= 40;
 
   const labelW = 158;
   const planW = Math.max(70, (A4.w - M * 2 - labelW) / plans.length);
   const tableW = labelW + planW * plans.length;
-  const rowH = 21 * ctx.density;
+  const rowH = 21 * ctx.density * scale;
+  const cellSize = (ctx.snapshot.design.sections?.breakdown?.fontSize ?? 6.9) * Math.min(1.35, scale);
 
   const header = (v: string, x: number, w: number, align: "left" | "right") => text(ctx, v, x, y, { size: 6.5, font: ctx.bold, color: ctx.muted, maxWidth: w, align });
   header("Description", M + 6, labelW - 6, "left");
@@ -555,28 +612,32 @@ function breakdownTable(ctx: CtxWithOrigin, plans: PlanCalculation[]) {
 
   const row = (label: string, values: string[], opts: { bold?: boolean; accent?: boolean } = {}) => {
     if (opts.accent) page.drawRectangle({ x: M, y: y - rowH + 2, width: tableW, height: rowH - 2, color: ctx.accent, opacity: 0.07 });
-    text(ctx, label, M + 6, y - 8, { size: 6.9, font: opts.bold ? ctx.bold : ctx.font, color: opts.accent ? ctx.accent : ctx.ink, maxWidth: labelW - 12 });
-    values.forEach((v, i) => text(ctx, v, M + labelW + i * planW + 4, y - 8, { size: 6.9, font: opts.bold ? ctx.bold : ctx.font, color: opts.accent ? ctx.accent : ctx.ink, maxWidth: planW - 8, align: "right" }));
+    if (ctx.snapshot.design.sections?.breakdown?.border !== false) page.drawRectangle({ x: M, y: y - rowH + 1, width: tableW, height: rowH - 1, borderColor: ctx.line, borderWidth: 0.35 });
+    text(ctx, label, M + 6, y - 8, { size: cellSize, font: opts.bold ? ctx.bold : ctx.font, color: opts.accent ? ctx.accent : ctx.ink, maxWidth: labelW - 12 });
+    values.forEach((v, i) => text(ctx, v, M + labelW + i * planW + 4, y - 8, { size: cellSize, font: opts.bold ? ctx.bold : ctx.font, color: opts.accent ? ctx.accent : ctx.ink, maxWidth: planW - 8, align: "right" }));
     y -= rowH;
   };
 
-  row("List price", plans.map((p) => money(p.listPriceMinor, ctx.calc.currency)));
+  row("List price", plans.map((p) => money(p.listPriceMinor, ctx.calc.currency, ctx.snapshot.design)));
   row(
     "Discount",
-    plans.map((p) => (p.discountAmountMinor > 0 ? `${p.discount.type === "percent" ? `${p.discount.value}%` : ""}  ${money(p.discountAmountMinor, ctx.calc.currency)}`.trim() : "—")),
+    plans.map((p) => (p.discountAmountMinor > 0 ? `${p.discount.type === "percent" ? `${p.discount.value}%` : ""} (given discount)` : "—")),
   );
-  row("Final price (contract)", plans.map((p) => money(p.contractPriceMinor, ctx.calc.currency)), { bold: true, accent: true });
-  row("Initial payment", plans.map((p) => money(p.initialPaymentMinor, ctx.calc.currency)));
-  row("During construction", plans.map((p) => money(p.duringConstructionMinor, ctx.calc.currency)));
-  row("Handover payment", plans.map((p) => money(p.handoverPaymentMinor, ctx.calc.currency)));
-  if (plans.some((p) => p.feesTotalMinor > 0)) {
-    row("Fees", plans.map((p) => (p.feesTotalMinor > 0 ? money(p.feesTotalMinor, ctx.calc.currency) : "—")));
+  row("Final price (contract)", plans.map((p) => money(p.contractPriceMinor, ctx.calc.currency, ctx.snapshot.design)), { bold: true, accent: true });
+  row("Down payment", plans.map((p) => `${money(p.initialPaymentMinor, ctx.calc.currency, ctx.snapshot.design)} (${pctOf(p.initialPaymentMinor, p.contractPriceMinor)})`));
+  row("During construction", plans.map((p) => `${money(p.duringConstructionMinor, ctx.calc.currency, ctx.snapshot.design)} (${pctOf(p.duringConstructionMinor, p.contractPriceMinor)})`));
+  row("Handover payment", plans.map((p) => `${money(p.handoverPaymentMinor, ctx.calc.currency, ctx.snapshot.design)} (${pctOf(p.handoverPaymentMinor, p.contractPriceMinor)})`));
+  for (const label of feeLabels) {
+    row(`${label} (fee)`, plans.map((p) => {
+      const fee = p.fees.find((f) => f.label === label);
+      return fee ? `${money(fee.amountMinor, ctx.calc.currency, ctx.snapshot.design)}${fee.type === "percent" ? ` (${fee.value}%)` : ""}` : "—";
+    }));
   }
   if (plans.some((p) => p.vatTotalMinor > 0)) {
-    row("VAT", plans.map((p) => (p.vatTotalMinor > 0 ? money(p.vatTotalMinor, ctx.calc.currency) : "—")));
+    row("VAT", plans.map((p) => (p.vatTotalMinor > 0 ? `${money(p.vatTotalMinor, ctx.calc.currency, ctx.snapshot.design)}${ctx.snapshot.terms.vatPct ? ` (${ctx.snapshot.terms.vatPct}%)` : ""}` : "—")));
   }
   page.drawLine({ start: { x: M, y }, end: { x: M + tableW, y }, thickness: 0.6, color: ctx.line });
-  row("Total payable", plans.map((p) => money(p.totalPayableMinor, ctx.calc.currency)), { bold: true, accent: true });
+  row("Total payable", plans.map((p) => money(p.totalPayableMinor, ctx.calc.currency, ctx.snapshot.design)), { bold: true, accent: true });
 
   if (plans.length > 1) {
     y -= 8;
@@ -595,7 +656,7 @@ function scheduleSummary(ctx: CtxWithOrigin) {
     y -= 14;
     const entries = plan.schedule.slice(0, 8);
     for (const s of entries) {
-      const value = s.count > 1 ? `${money(s.amountMinor, ctx.calc.currency)} x ${s.count}` : money(s.totalMinor, ctx.calc.currency);
+      const value = s.count > 1 ? `${money(s.amountMinor, ctx.calc.currency, ctx.snapshot.design)} x ${s.count}` : money(s.totalMinor, ctx.calc.currency, ctx.snapshot.design);
       ctx.page.drawCircle({ x: M + 3, y: y - 2.6, size: 1.4, color: ctx.accent });
       text(ctx, `${s.label}${s.dueDate ? `  (${s.dueDate})` : ""}`, M + 10, y, { size: 7.1, color: ctx.ink, maxWidth: 320 });
       text(ctx, value, A4.w - M - 160, y, { size: 7.1, font: ctx.bold, color: ctx.ink, maxWidth: 160, align: "right" });
@@ -613,12 +674,13 @@ function gallery(ctx: CtxWithOrigin) {
   if (!ctx.snapshot.design.showGallery || images.length === 0) return;
   const gap = 10;
   const w = (A4.w - M * 2 - gap) / 2;
-  const h = 158;
+  const scale = ctx.snapshot.design.sections?.gallery?.imageScale ?? "medium";
+  const h = scale === "small" ? 104 : scale === "large" ? 190 : 158;
   // Flow onto the current page when there is room; the gallery does not have to
   // own a page of its own.
   ensure(ctx, 90 + h);
   let y = ctx.y - 16;
-  text(ctx, "PROJECT GALLERY", M, y, { size: 8, font: ctx.bold, color: ctx.accent });
+  text(ctx, ctx.snapshot.design.sections?.gallery?.heading || "PROJECT GALLERY", M, y, { size: ctx.snapshot.design.sections?.gallery?.headingSize ?? 8, font: ctx.bold, color: ctx.accent });
   text(ctx, safe(ctx.snapshot.project?.name || "Selected project imagery"), M, y - 18, { size: 18, font: ctx.display, color: ctx.ink, maxWidth: A4.w - M * 2 });
   y -= 66;
   for (let i = 0; i < images.length; i++) {
@@ -639,11 +701,12 @@ function floorPlans(ctx: CtxWithOrigin) {
   const plans = ctx.snapshot.assets.floorPlans.filter((p) => p.image && ctx.images.get(p.image)).slice(0, 6);
   if (!ctx.snapshot.design.showFloorPlans || plans.length === 0) return;
   ensure(ctx, 300);
-  text(ctx, "FLOOR PLANS", M, ctx.y, { size: 8, font: ctx.bold, color: ctx.accent });
+  text(ctx, ctx.snapshot.design.sections?.floorPlans?.heading || "FLOOR PLANS", M, ctx.y, { size: ctx.snapshot.design.sections?.floorPlans?.headingSize ?? 8, font: ctx.bold, color: ctx.accent });
   text(ctx, "Selected layouts", M, ctx.y - 18, { size: 18, font: ctx.display, color: ctx.ink });
   let y = ctx.y - 60;
+  const scale = ctx.snapshot.design.sections?.floorPlans?.imageScale ?? "medium";
+  const h = scale === "small" ? 210 : scale === "large" ? 360 : 300;
   for (const plan of plans) {
-    const h = 300;
     if (y - h < M + 30) {
       newPage(ctx);
       y = A4.h - M;
@@ -654,6 +717,95 @@ function floorPlans(ctx: CtxWithOrigin) {
     y -= h + 14;
   }
   ctx.y = y;
+}
+
+/* ------------------------- compact two-page letter ------------------------ */
+
+/**
+ * Page two of the two-page letter: the validated price table, then one media
+ * band holding the selected gallery frames and floor plan, with the required
+ * disclaimer anchored at the foot. Heights are measured before drawing, so the
+ * page never spawns a third page or clips a figure.
+ */
+function compactLetter(ctx: CtxWithOrigin) {
+  const page = ctx.page;
+  const design = ctx.snapshot.design;
+  const width = A4.w - M * 2;
+
+  let y = A4.h - M;
+  page.drawRectangle({ x: M, y: y - 22, width: 136, height: 22, color: ctx.accent });
+  text(ctx, "PRICE & PAYMENT SUMMARY", M + 7, y - 15, { size: 5.6, font: ctx.bold, color: rgb(1, 1, 1), maxWidth: 124 });
+  if (ctx.snapshot.date) {
+    const date = new Date(`${ctx.snapshot.date}T00:00:00Z`);
+    const printed = /^\d{4}-\d{2}-\d{2}$/.test(ctx.snapshot.date) && !Number.isNaN(date.getTime())
+      ? new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "long", year: "numeric", timeZone: "UTC" }).format(date)
+      : ctx.snapshot.date;
+    text(ctx, `${safe(design.dateLabel || "Offer Date")}  ${safe(printed)}`, A4.w - M - 210, y - 14, { size: 7.4, font: ctx.bold, color: ctx.muted, maxWidth: 210, align: "right" });
+  }
+  y -= 42;
+  text(ctx, ctx.snapshot.project?.name || ctx.snapshot.title || "Private Residence", M, y, { size: 20, font: ctx.display, maxWidth: width });
+  y -= 26;
+  const location = [ctx.snapshot.project?.city, ctx.snapshot.project?.country].filter(Boolean).join(", ");
+  text(ctx, [location, `Ref ${ctx.snapshot.reference}`].filter(Boolean).join("   -   "), M, y, { size: 7.4, color: ctx.muted, maxWidth: width });
+  y -= 18;
+
+  if (design.showPriceBreakdown && ctx.calc.plans.length) {
+    ctx.y = y;
+    breakdownTable(ctx, ctx.calc.plans, 1.16);
+  }
+
+  // Media band: sized to whatever room is left above the footnote area.
+  const mediaTop = ctx.y - 2;
+  const galleryImages = design.showGallery ? ctx.snapshot.assets.gallery.filter((u) => ctx.images.get(u)).slice(0, 3) : [];
+  const floor = design.showFloorPlans ? ctx.snapshot.assets.floorPlans.find((p) => p.image && ctx.images.get(p.image)) : undefined;
+  const bottomReserve = M + 158;
+  const room = mediaTop - 24 - bottomReserve;
+  if ((galleryImages.length > 0 || floor) && room > 64) {
+    const bandH = Math.min(174, room);
+    const label = [galleryImages.length ? design.sections?.gallery?.heading || "Project Gallery" : "", floor ? design.sections?.floorPlans?.heading || "Floor Plan" : ""].filter(Boolean).join("   |   ");
+    text(ctx, safe(label).toUpperCase(), M, mediaTop, { size: 7, font: ctx.bold, color: ctx.accent, maxWidth: width });
+    const top = mediaTop - 14;
+    const gap = 10;
+    if (galleryImages.length > 0 && floor) {
+      const galleryW = (width - gap) * 0.62;
+      const floorW = width - gap - galleryW;
+      const cellW = (galleryW - gap * (galleryImages.length - 1)) / galleryImages.length;
+      galleryImages.forEach((url, index) => {
+        drawImageCoverClipped(page, ctx.images.get(url)!, M + index * (cellW + gap), top - bandH, cellW, bandH);
+      });
+      const fx = M + galleryW + gap;
+      page.drawRectangle({ x: fx, y: top - bandH, width: floorW, height: bandH, color: rgb(1, 1, 1), borderColor: ctx.line, borderWidth: 0.5 });
+      drawImageContain(page, ctx.images.get(floor.image)!, fx + 8, top - bandH + 22, floorW - 16, bandH - 32);
+      text(ctx, fit(floor.name, ctx.bold, 6.2, floorW - 16), fx + 8, top - 12, { size: 6.2, font: ctx.bold, color: ctx.ink, maxWidth: floorW - 16 });
+    } else if (galleryImages.length > 0) {
+      const cellW = (width - gap * (galleryImages.length - 1)) / galleryImages.length;
+      galleryImages.forEach((url, index) => {
+        drawImageCoverClipped(page, ctx.images.get(url)!, M + index * (cellW + gap), top - bandH, cellW, bandH);
+      });
+    } else if (floor) {
+      page.drawRectangle({ x: M, y: top - bandH, width, height: bandH, color: rgb(1, 1, 1), borderColor: ctx.line, borderWidth: 0.5 });
+      drawImageContain(page, ctx.images.get(floor.image)!, M + 12, top - bandH + 22, width - 24, bandH - 34);
+      text(ctx, fit(floor.name, ctx.bold, 6.6, width - 24), M + 12, top - 12, { size: 6.6, font: ctx.bold, color: ctx.ink, maxWidth: width - 24 });
+    }
+  }
+
+  // Footnote block, pinned so it lands at the bottom of the last page.
+  const contactBits = [design.preparedBy ? `Prepared by ${design.preparedBy}` : "", design.contactPhone, design.contactEmail, design.contactSite].filter(Boolean);
+  if (design.showContact && contactBits.length) {
+    page.drawLine({ start: { x: M, y: M + 134 }, end: { x: A4.w - M, y: M + 134 }, thickness: 0.5, color: ctx.line });
+    text(ctx, contactBits.join("   -   "), M, M + 112, { size: 7.2, font: ctx.bold, color: ctx.ink, maxWidth: width });
+  }
+  if (design.showDisclaimer && design.disclaimer) {
+    const lines = wrap(design.disclaimer, ctx.font, 6.2, width).slice(0, 4);
+    text(ctx, "IMPORTANT", M, M + 96, { size: 5.8, font: ctx.bold, color: ctx.muted });
+    let ty = M + 92;
+    for (const line of lines) {
+      page.drawText(line, { x: M, y: ty - 6.2, size: 6.2, font: ctx.font, color: ctx.muted });
+      ty -= 8.2;
+    }
+  }
+  if (design.footerNote) text(ctx, design.footerNote, M, M + 48, { size: 6.6, font: ctx.italic, color: ctx.muted, maxWidth: width });
+  ctx.y = M + 22;
 }
 
 /* ------------------------------- closing ---------------------------------- */
@@ -745,9 +897,13 @@ export async function renderOfferPdf(snapshot: OfferSnapshotInput, calc: OfferCa
 
   const design = snapshot.design;
   const serifDisplay = design.displayFont === "serif";
-  const font = await pdf.embedFont(StandardFonts.Helvetica);
-  const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
-  const italic = await pdf.embedFont(StandardFonts.HelveticaOblique);
+  const bodyFont = design.bodyFont ?? "sans";
+  const standardBody = bodyFont === "serif" ? StandardFonts.TimesRoman : bodyFont === "mono" ? StandardFonts.Courier : StandardFonts.Helvetica;
+  const standardBold = bodyFont === "serif" ? StandardFonts.TimesRomanBold : bodyFont === "mono" ? StandardFonts.CourierBold : StandardFonts.HelveticaBold;
+  const standardItalic = bodyFont === "serif" ? StandardFonts.TimesRomanItalic : bodyFont === "mono" ? StandardFonts.CourierOblique : StandardFonts.HelveticaOblique;
+  const font = await pdf.embedFont(standardBody);
+  const bold = await pdf.embedFont(standardBold);
+  const italic = await pdf.embedFont(standardItalic);
   const display = await pdf.embedFont(serifDisplay ? StandardFonts.TimesRomanBold : StandardFonts.HelveticaBold);
   const page = pdf.addPage([A4.w, A4.h]);
   page.drawRectangle({ x: 0, y: 0, width: A4.w, height: A4.h, color: hexToRgb(design.paper, "#ffffff") });
@@ -762,6 +918,7 @@ export async function renderOfferPdf(snapshot: OfferSnapshotInput, calc: OfferCa
     italic,
     display,
     density: design.density === "compact" ? 0.82 : 1,
+    fontScale: Math.max(0.85, Math.min(1.5, (design.bodyFontSize ?? 9) / 9)),
     images: new Map(),
     snapshot,
     calc,
@@ -776,6 +933,7 @@ export async function renderOfferPdf(snapshot: OfferSnapshotInput, calc: OfferCa
   const selected = options.planKeys?.length ? calc.plans.filter((p) => options.planKeys!.includes(p.key)) : calc.plans;
   if (selected.length === 0) throw new Error("No plans selected for rendering");
   const renderCalc: OfferCalculation = { ...calc, plans: selected };
+  ctx.calc = renderCalc;
 
   await loadImages(ctx, [
     snapshot.assets.coverImage,
@@ -786,22 +944,33 @@ export async function renderOfferPdf(snapshot: OfferSnapshotInput, calc: OfferCa
     snapshot.assets.mrHomeLogo,
   ]);
 
+  const maxPages = snapshot.design.maxPages ?? 2;
   cover(ctx);
   newPage(ctx);
-  plansPage(ctx);
-  if (design.showPriceBreakdown) {
-    const chunkSize = selected.length > 4 ? 3 : 4;
-    for (let i = 0; i < selected.length; i += chunkSize) {
-      if (i > 0) newPage(ctx);
-      breakdownTable(ctx, selected.slice(i, i + chunkSize));
+  if (maxPages === 2) {
+    // The default letter must stay inside two pages including imagery, so the
+    // second page is composed as a single measured layout instead of flowing
+    // sections that would each demand their own page.
+    compactLetter(ctx);
+  } else {
+    plansPage(ctx);
+    if (design.showPriceBreakdown) {
+      const chunkSize = selected.length > 4 ? 3 : 4;
+      for (let i = 0; i < selected.length; i += chunkSize) {
+        if (i > 0) newPage(ctx);
+        breakdownTable(ctx, selected.slice(i, i + chunkSize));
+      }
+      scheduleSummary(ctx);
     }
-    scheduleSummary(ctx);
+    gallery(ctx);
+    floorPlans(ctx);
+    closing(ctx);
   }
-  gallery(ctx);
-  floorPlans(ctx);
-  closing(ctx);
   pageFooters(ctx);
 
+  if (ctx.pages.length > maxPages) {
+    throw new Error(`This offer needs ${ctx.pages.length} pages with the selected plans and assets, exceeding the ${maxPages}-page limit. Reduce selected images, plans, or schedule details before generating.`);
+  }
   const bytes = await pdf.save({ useObjectStreams: false });
   return new Uint8Array(bytes);
 }
@@ -823,10 +992,10 @@ export function expectedPdfFigures(snapshot: OfferSnapshotInput, calc: OfferCalc
   for (const plan of calc.plans) {
     figures.push(
       plan.name,
-      formatMinor(plan.contractPriceMinor, calc.currency),
-      formatMinor(plan.initialPaymentMinor, calc.currency),
-      formatMinor(plan.handoverPaymentMinor, calc.currency),
-      formatMinor(plan.totalPayableMinor, calc.currency),
+      formatMinor(plan.contractPriceMinor, calc.currency, { showMinorUnits: snapshot.design.showMinorUnits === true }),
+      formatMinor(plan.initialPaymentMinor, calc.currency, { showMinorUnits: snapshot.design.showMinorUnits === true }),
+      formatMinor(plan.handoverPaymentMinor, calc.currency, { showMinorUnits: snapshot.design.showMinorUnits === true }),
+      formatMinor(plan.totalPayableMinor, calc.currency, { showMinorUnits: snapshot.design.showMinorUnits === true }),
     );
   }
   return [...new Set(figures.map((f) => f.trim()).filter(Boolean))];

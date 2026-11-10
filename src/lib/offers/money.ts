@@ -57,22 +57,57 @@ export function roundToIncrement(minor: number, incrementMinor: number): number 
   return Math.round(minor / incrementMinor) * incrementMinor;
 }
 
-export function formatMinor(minor: number, currency: string): string {
-  const p = currencyPrecision(currency);
-  const value = fromMinor(minor, p);
+export function formatMinor(minor: number, currency: string, options: { showMinorUnits?: boolean } = {}): string {
+  const p = options.showMinorUnits === false ? 0 : currencyPrecision(currency);
+  const value = fromMinor(minor, currencyPrecision(currency));
   try {
     return new Intl.NumberFormat("en-US", {
-      minimumFractionDigits: p,
-      maximumFractionDigits: p,
+      minimumFractionDigits: options.showMinorUnits === false ? 0 : p,
+      maximumFractionDigits: options.showMinorUnits === false ? 0 : p,
     }).format(value);
   } catch {
-    return value.toFixed(p);
+    return value.toFixed(options.showMinorUnits === false ? 0 : p);
   }
 }
 
 /** Format an amount for display, with the currency code. */
 export function formatMoney(minor: number, currency: string): string {
   return `${formatMinor(minor, currency)} ${String(currency || "").toUpperCase()}`.trim();
+}
+
+const SMALL_ONES = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"];
+const SMALL_TENS = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"];
+
+function wordsBelowThousand(value: number): string {
+  const parts: string[] = [];
+  if (value >= 100) {
+    parts.push(`${SMALL_ONES[Math.floor(value / 100)]} hundred`);
+    value %= 100;
+  }
+  if (value >= 20) {
+    parts.push(SMALL_TENS[Math.floor(value / 10)]);
+    if (value % 10) parts[parts.length - 1] += `-${SMALL_ONES[value % 10]}`;
+  } else if (value > 0 || parts.length === 0) parts.push(SMALL_ONES[value]);
+  return parts.join(" ");
+}
+
+/** English integer words for optional PDF emphasis; values beyond this safe bound are numeric only. */
+export function amountInWords(minor: number, currency: string): string | null {
+  const precision = currencyPrecision(currency);
+  const major = Math.round(Math.abs(minor) / Math.pow(10, precision));
+  if (!Number.isSafeInteger(major) || major > 999_999_999_999) return null;
+  if (major === 0) return "Zero";
+  const scales = ["", "thousand", "million", "billion"];
+  let value = major;
+  const groups: string[] = [];
+  let scaleIndex = 0;
+  while (value > 0) {
+    const group = value % 1000;
+    if (group) groups.unshift(`${wordsBelowThousand(group)}${scales[scaleIndex] ? ` ${scales[scaleIndex]}` : ""}`);
+    value = Math.floor(value / 1000);
+    scaleIndex += 1;
+  }
+  return `${minor < 0 ? "Minus " : ""}${groups.join(" ")} ${String(currency || "").toUpperCase()}`.trim();
 }
 
 /** Stable FNV-1a hash used to prove a PDF matches the exact input snapshot. */

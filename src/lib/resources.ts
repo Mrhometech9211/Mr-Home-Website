@@ -331,6 +331,7 @@ export const ADMIN_NAV = [
   { href: "/admin/leads", label: "Leads / CRM", icon: "inbox", permission: "leads.read" },
   { href: "/admin/leads/pipeline", label: "Pipeline", icon: "kanban", permission: "leads.read" },
   { href: "/admin/sales-offers", label: "Sales Offers", icon: "offer", permission: "offers.read" },
+  { href: "/admin/planner", label: "Planner", icon: "calendar", permission: "planner.read" },
   { href: "/admin/projects", label: "Projects", icon: "building", permission: "projects.read" },
   { href: "/admin/brochures", label: "Brochures", icon: "brochure", permission: "brochures.read" },
   { href: "/admin/news", label: "News", icon: "news", permission: "news.read" },

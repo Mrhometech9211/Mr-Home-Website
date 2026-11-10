@@ -23,6 +23,8 @@ export const PERMISSIONS = [
   "leads.read", "leads.write", "leads.export",
   // sales offers (Phase 10)
   "offers.read", "offers.write", "offers.approve",
+  // personal admin planner
+  "planner.read", "planner.write",
   // legal + seo
   "seo.read", "seo.write",
   "legal.read", "legal.write",
@@ -117,6 +119,13 @@ export const PERMISSION_GROUPS: { group: string; items: { key: Permission; label
       { key: "offers.read", label: "View sales offers & generated PDFs" },
       { key: "offers.write", label: "Create / edit offers, import units, generate PDFs" },
       { key: "offers.approve", label: "Approve offers for client sharing" },
+    ],
+  },
+  {
+    group: "Planner",
+    items: [
+      { key: "planner.read", label: "View planner and reminders" },
+      { key: "planner.write", label: "Create, edit, complete and delete planner items" },
     ],
   },
   {

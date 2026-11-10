@@ -53,6 +53,8 @@ import { cn } from "@/lib/utils";
 type Device = "desktop" | "tablet" | "mobile";
 
 const DEVICE_WIDTH: Record<Device, number> = { desktop: 1440, tablet: 834, mobile: 390 };
+/** Visual height of the preview panel; the iframe is taller when scaled down. */
+const CANVAS_HEIGHT = 720;
 
 export type BuilderTarget = {
   kind: "page" | "project";
@@ -241,6 +243,25 @@ export function VisualBuilder({ target, initialSections, canWrite, canPublish, o
   const [itemPicker, setItemPicker] = useState<{ sectionId: string; index: number } | null>(null);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const selectedRef = useRef<string | null>(null);
+  /**
+   * The canvas renders the page at a real device width (1440 / 834 / 390).
+   * “Fit” scales that whole viewport down so the entire desktop layout is
+   * visible in the panel; “1:1” keeps real pixels and scrolls horizontally.
+   */
+  const canvasRef = useRef<HTMLDivElement | null>(null);
+  const [canvasWidth, setCanvasWidth] = useState(0);
+  const [fit, setFit] = useState(true);
+
+  useEffect(() => {
+    const el = canvasRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect.width ?? 0;
+      setCanvasWidth(Math.round(w));
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   const selected = useMemo(() => sections.find((s) => s.id === selectedId) ?? null, [sections, selectedId]);
   // Keep the ref in sync outside render so message handlers can read it.
@@ -550,7 +571,7 @@ export function VisualBuilder({ target, initialSections, canWrite, canPublish, o
                 key={d}
                 type="button"
                 onClick={() => setDevice(d)}
-                title={`${d} preview`}
+                title={`${d} preview (${DEVICE_WIDTH[d]}px)`}
                 aria-label={`${d} preview`}
                 aria-pressed={device === d}
                 className={cn("grid h-8 w-8 place-items-center rounded-lg border text-ink/70", device === d ? "border-brand bg-brand/5 text-brand" : "border-transparent hover:bg-slate-100")}
@@ -559,6 +580,16 @@ export function VisualBuilder({ target, initialSections, canWrite, canPublish, o
               </button>
             );
           })}
+          <span className="mx-1 h-5 w-px bg-ink/10" />
+          <button
+            type="button"
+            onClick={() => setFit((v) => !v)}
+            className={cn("h-8 rounded-lg border px-2 text-[11.5px] font-medium", fit ? "border-brand bg-brand/5 text-brand" : "border-ink/10 text-charcoal/70 hover:bg-slate-100")}
+            title={fit ? "Scaling the full viewport to fit the panel" : "Real pixels — scroll horizontally"}
+            aria-pressed={fit}
+          >
+            {fit ? "Fit" : "1:1"}
+          </button>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -636,20 +667,38 @@ export function VisualBuilder({ target, initialSections, canWrite, canPublish, o
         </aside>
 
         {/* Canvas */}
-        <div className="bg-slate-100/70 p-3">
-          <div className="mx-auto overflow-hidden rounded-xl border border-ink/10 bg-white shadow-sm" style={{ width: device === "desktop" ? "100%" : DEVICE_WIDTH[device], maxWidth: "100%" }}>
-            <iframe
-              key={previewKey}
-              ref={iframeRef}
-              src={`${target.previewSrc}${target.previewSrc.includes("?") ? "&" : "?"}k=${previewKey}`}
-              title={`${target.title} preview`}
-              className="h-[680px] w-full border-0 bg-white"
-              sandbox="allow-same-origin"
-            />
+        <div className="min-w-0 bg-slate-100/70 p-3">
+          <div ref={canvasRef} className="overflow-x-auto overflow-y-hidden">
+            <div
+              className="mx-auto overflow-hidden rounded-xl border border-ink/10 bg-white shadow-sm"
+              style={{ width: Math.round(DEVICE_WIDTH[device] * (fit ? Math.min(1, (canvasWidth || DEVICE_WIDTH[device]) / DEVICE_WIDTH[device]) : 1)), height: CANVAS_HEIGHT }}
+            >
+              <iframe
+                key={previewKey}
+                ref={iframeRef}
+                src={`${target.previewSrc}${target.previewSrc.includes("?") ? "&" : "?"}k=${previewKey}`}
+                title={`${target.title} preview`}
+                sandbox="allow-same-origin"
+                style={{
+                  width: DEVICE_WIDTH[device],
+                  height: Math.round(CANVAS_HEIGHT / (fit ? Math.min(1, (canvasWidth || DEVICE_WIDTH[device]) / DEVICE_WIDTH[device]) : 1)),
+                  transform: `scale(${fit ? Math.min(1, (canvasWidth || DEVICE_WIDTH[device]) / DEVICE_WIDTH[device]) : 1})`,
+                  transformOrigin: "top left",
+                  border: 0,
+                  background: "#fff",
+                }}
+              />
+            </div>
           </div>
-          <p className="mt-2 text-center text-[11.5px] text-mist">
-            Click a section in the preview to edit it. Preview width: {DEVICE_WIDTH[device]}px — real responsive rendering.
-          </p>
+          <div className="mt-2 flex flex-wrap items-center justify-center gap-2 text-[11.5px] text-mist">
+            <span>
+              Click a section in the preview to edit it. {device} viewport: {DEVICE_WIDTH[device]}px
+              {fit && canvasWidth > 0 && canvasWidth < DEVICE_WIDTH[device] ? ` · fitted at ${Math.round((canvasWidth / DEVICE_WIDTH[device]) * 100)}%` : " · real pixels"}
+            </span>
+            <a href={target.previewSrc} target="_blank" rel="noopener noreferrer" className="rounded-md border border-ink/10 bg-white px-1.5 py-0.5 font-medium text-ink hover:border-ink/25">
+              Open preview ↗
+            </a>
+          </div>
         </div>
 
         {/* Settings */}
@@ -971,6 +1020,46 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
+/**
+ * A collapsible editor group. Clicking the heading shrinks the group to one
+ * line so the settings panel can show far more at once without an extra button.
+ * The state is local and reset per tab render — nothing about the page changes.
+ */
+function Group({
+  title,
+  hint,
+  actions,
+  defaultOpen = true,
+  children,
+}: {
+  title: string;
+  hint?: string;
+  actions?: React.ReactNode;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <section className="overflow-hidden rounded-xl border border-ink/10">
+      <div className="flex items-center gap-2 bg-slate-50/80 pr-1.5">
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          title={open ? `Collapse ${title}` : `Expand ${title}`}
+          className="flex min-w-0 flex-1 items-center gap-1.5 px-2.5 py-2 text-left"
+        >
+          <ChevronDown className={cn("h-3.5 w-3.5 shrink-0 text-mist transition-transform", !open && "-rotate-90")} />
+          <span className="truncate text-[11px] font-semibold uppercase tracking-wider text-charcoal/70">{title}</span>
+          {hint && <span className="ml-1 truncate text-[10.5px] text-mist">{hint}</span>}
+        </button>
+        {actions}
+      </div>
+      {open && <div className="space-y-3 border-t border-ink/8 p-2.5">{children}</div>}
+    </section>
+  );
+}
+
 function ContentTab({
   section: s,
   canWrite,
@@ -1001,8 +1090,13 @@ function ContentTab({
   const showVideo = s.type === "video";
   const showMap = s.type === "location";
 
+  const showCopy = showEyebrow || showTitle || showSubtitle || showBody;
+  const showMedia = showImage || showVideo || showMap || ["text", "imageText"].includes(s.type);
+
   return (
-    <div className="space-y-3">
+    <div className="space-y-2">
+      {showCopy && (
+        <Group title="Copy">
       {showEyebrow && (
         <Field label="Eyebrow">
           <input value={s.eyebrow ?? ""} onChange={(e) => onChange({ eyebrow: e.target.value })} className={inputCls} disabled={!canWrite} placeholder="PRESTIGIOUS LIVING AT" />
@@ -1023,6 +1117,10 @@ function ContentTab({
           <textarea value={s.body ?? ""} onChange={(e) => onChange({ body: e.target.value })} className={cn(inputCls, "h-24 py-2")} disabled={!canWrite} />
         </Field>
       )}
+        </Group>
+      )}
+      {showMedia && (
+        <Group title="Media">
       {showImage && (
         <div>
           <span className={labelCls}>Image</span>
@@ -1055,7 +1153,10 @@ function ContentTab({
           </select>
         </Field>
       )}
+        </Group>
+      )}
 
+      <Group title="Buttons">
       <div className="grid grid-cols-2 gap-2">
         <Field label="Button label">
           <input value={s.ctaLabel ?? ""} onChange={(e) => onChange({ ctaLabel: e.target.value })} className={inputCls} disabled={!canWrite} />
@@ -1070,13 +1171,13 @@ function ContentTab({
           <input value={s.cta2Href ?? ""} onChange={(e) => onChange({ cta2Href: e.target.value })} className={inputCls} disabled={!canWrite} />
         </Field>
       </div>
+      </Group>
 
       {itemFields && itemFields.length > 0 && (
-        <div className="rounded-xl border border-ink/10 p-2">
-          <div className="mb-2 flex items-center justify-between">
-            <span className="text-[11.5px] font-semibold uppercase tracking-wider text-charcoal/70">Items ({s.items?.length ?? 0})</span>
-            <Btn variant="ghost" size="sm" onClick={onAddItem} disabled={!canWrite}><Plus className="h-3.5 w-3.5" /> Add</Btn>
-          </div>
+        <Group
+          title={`Items (${s.items?.length ?? 0})`}
+          actions={<Btn variant="ghost" size="sm" onClick={onAddItem} disabled={!canWrite}><Plus className="h-3.5 w-3.5" /> Add</Btn>}
+        >
           <div className="space-y-2">
             {(s.items ?? []).map((it, i) => (
               <div key={i} className="rounded-lg border border-ink/10 bg-slate-50/50 p-2">
@@ -1108,7 +1209,7 @@ function ContentTab({
               </div>
             ))}
           </div>
-        </div>
+        </Group>
       )}
     </div>
   );
@@ -1121,7 +1222,8 @@ function ContentTab({
 function DesignTab({ section: s, canWrite, onStyle }: { section: BuilderSection; canWrite: boolean; onStyle: (patch: Partial<SectionStyle>) => void }) {
   const style = s.style ?? {};
   return (
-    <div className="space-y-4">
+    <div className="space-y-2">
+      <Group title="Background">
       <div>
         <span className={labelCls}>Background</span>
         <div className="flex gap-2">
@@ -1143,6 +1245,8 @@ function DesignTab({ section: s, canWrite, onStyle }: { section: BuilderSection;
         <span className={labelCls}>Image scrim {style.overlay ?? 45}%</span>
         <input type="range" min={0} max={90} step={5} value={style.overlay ?? 45} onChange={(e) => onStyle({ overlay: Number(e.target.value) })} className="w-full accent-[#1f8f3a]" disabled={!canWrite || !style.backgroundImage} aria-label="Scrim strength" />
       </div>
+      </Group>
+      <Group title="Layout">
       <div className="grid grid-cols-2 gap-2">
         <Field label="Width">
           <select value={style.width ?? "default"} onChange={(e) => onStyle({ width: e.target.value as SectionStyle["width"] })} className={inputCls} disabled={!canWrite}>
@@ -1180,6 +1284,7 @@ function DesignTab({ section: s, canWrite, onStyle }: { section: BuilderSection;
           <input type="number" min={0} max={2000} value={style.minHeight ?? ""} onChange={(e) => onStyle({ minHeight: e.target.value ? Number(e.target.value) : null })} className={inputCls} disabled={!canWrite} />
         </Field>
       </div>
+      </Group>
     </div>
   );
 }
@@ -1204,13 +1309,16 @@ function AdvancedTab({
   const vis = s.visible ?? {};
   const toggle = (device: "desktop" | "tablet" | "mobile") => onChange({ visible: { ...vis, [device]: vis[device] === false } });
   return (
-    <div className="space-y-4">
+    <div className="space-y-2">
+      <Group title="Identity">
       <Field label="Layer name">
         <input value={s.label ?? ""} onChange={(e) => onChange({ label: e.target.value })} className={inputCls} disabled={!canWrite} placeholder="Shown only in the editor" />
       </Field>
       <Field label="Anchor id">
         <input value={s.anchorId ?? ""} onChange={(e) => onChange({ anchorId: e.target.value })} className={inputCls} disabled={!canWrite} placeholder="pricing" />
       </Field>
+      </Group>
+      <Group title="Visibility">
       <div>
         <span className={labelCls}>Visible on</span>
         <div className="grid grid-cols-3 gap-1.5">
@@ -1238,7 +1346,8 @@ function AdvancedTab({
           Linked to block #{s.blockId}. Editing content here will not be visible while the link is active — unlink by inserting an independent copy if you need a local variant.
         </p>
       )}
-      <div className="flex gap-2 border-t border-ink/10 pt-3">
+      </Group>
+      <div className="mb-2 flex gap-2 pt-1">
         <Btn variant="secondary" size="sm" onClick={onDuplicate} disabled={!canWrite}><Copy className="h-3.5 w-3.5" /> Duplicate</Btn>
         <Btn variant="danger" size="sm" onClick={onDelete} disabled={!canWrite}><Trash2 className="h-3.5 w-3.5" /> Delete</Btn>
       </div>

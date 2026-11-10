@@ -204,7 +204,7 @@ function computeSinglePlan(input: OfferPlanInput, terms: OfferTermsInput, contra
   const installmentAmountMinor = installments.length === 1 ? installments[0].perPaymentMinor : installmentCount > 0 ? Math.round(installmentsMinor / installmentCount) : 0;
 
   // ---- fees / VAT ------------------------------------------------------------
-  const fees: { label: string; amount: number; amountMinor: number }[] = [];
+  const fees: { label: string; amount: number; amountMinor: number; type: "percent" | "amount"; value: number }[] = [];
   for (const fee of Array.isArray(terms.fees) ? terms.fees : []) {
     const label = safeText(fee.label, 80);
     const value = Number(fee.value);
@@ -212,7 +212,7 @@ function computeSinglePlan(input: OfferPlanInput, terms: OfferTermsInput, contra
     const base = fee.basis === "listPrice" ? listMinor : contractMinor;
     const amountMinor = fee.type === "percent" ? applyPercent(base, value) : toMinor(value, precision) ?? 0;
     if (amountMinor < 0) continue;
-    fees.push({ label, amountMinor, amount: money(amountMinor, precision) });
+    fees.push({ label, amountMinor, amount: money(amountMinor, precision), type: fee.type, value });
   }
   const feesMinor = fees.reduce((a, f) => a + f.amountMinor, 0);
   const vatMinor = terms.vatPct != null && Number(terms.vatPct) > 0 ? applyPercent(contractMinor, Number(terms.vatPct)) : 0;

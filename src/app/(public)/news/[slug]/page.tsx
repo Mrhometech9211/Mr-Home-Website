@@ -7,6 +7,8 @@ import { buildMetadata } from "@/lib/seo";
 import { SITE_URL, absoluteSiteUrl } from "@/lib/site";
 import { PageHero } from "@/components/site/PageHero";
 import { Markdown } from "@/components/site/Markdown";
+import { PageBuilder } from "@/components/site/PageBuilder";
+import { safeSections } from "@/lib/page-builder";
 import { formatDateTime } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -33,6 +35,9 @@ export default async function NewsArticlePage({ params }: { params: Promise<{ sl
     .filter((a) => a.id !== article.id)
     .slice(0, 3);
 
+  // Published builder sections replace the Markdown body; the header, cover
+  // image and related-article rail stay exactly as they are.
+  const customSections = safeSections(article.builderPublished);
   const publishedISO = (article.publishedAt || article.createdAt).toISOString();
   const jsonLd = {
     "@context": "https://schema.org",
@@ -92,27 +97,33 @@ export default async function NewsArticlePage({ params }: { params: Promise<{ sl
       </PageHero>
 
       <article className="pb-24">
-        <div className="mx-auto max-w-3xl px-4 sm:px-6">
+        <div className={customSections.length ? "mx-auto max-w-[1240px] px-4 sm:px-6" : "mx-auto max-w-3xl px-4 sm:px-6"}>
           <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
           {article.coverImage && (
             <div className="relative mt-10 aspect-[16/9] w-full overflow-hidden rounded-3xl bg-ivory-deep shadow-card">
               <Image src={article.coverImage} alt={article.coverImageAlt || article.title} fill priority className="object-cover" sizes="(min-width:768px) 768px, 100vw" />
             </div>
           )}
-          <div className="mt-10">
-            <Markdown content={article.body} className="prose-legal text-[16px] leading-[1.8] text-charcoal/85" />
-          </div>
-          {article.videoUrl && (
-            <div className="mt-10 aspect-video w-full overflow-hidden rounded-3xl bg-ink">
-              <iframe
-                src={article.videoUrl}
-                title={article.title}
-                className="h-full w-full"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; picture-in-picture"
-                allowFullScreen
-                referrerPolicy="strict-origin-when-cross-origin"
-              />
-            </div>
+          {customSections.length ? (
+            <PageBuilder sections={customSections} source={`article:${article.slug}`} />
+          ) : (
+            <>
+              <div className="mt-10">
+                <Markdown content={article.body} className="prose-legal text-[16px] leading-[1.8] text-charcoal/85" />
+              </div>
+              {article.videoUrl && (
+                <div className="mt-10 aspect-video w-full overflow-hidden rounded-3xl bg-ink">
+                  <iframe
+                    src={article.videoUrl}
+                    title={article.title}
+                    className="h-full w-full"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; picture-in-picture"
+                    allowFullScreen
+                    referrerPolicy="strict-origin-when-cross-origin"
+                  />
+                </div>
+              )}
+            </>
           )}
           <p className="mt-12 rounded-2xl bg-ivory-deep/70 p-5 text-[13px] text-charcoal/70">
             Looking to invest in {article.marketName || "one of our markets"}?{" "}
