@@ -230,7 +230,18 @@ function SectionBody({ section: s, index, source, project, settings, markets, pr
           <div className="relative -mx-4 overflow-hidden rounded-3xl bg-space sm:-mx-6">
             <div className={cn("relative flex", !aspect && "min-h-[240px] sm:min-h-[320px] lg:min-h-[380px]")} style={aspect ? { aspectRatio: aspect, minHeight: 200 } : undefined}>
               {s.image ? (
-                <Image src={s.image} alt="" fill priority={index === 0} className="object-cover object-center" sizes="100vw" />
+                <Image
+                  src={s.image}
+                  alt=""
+                  fill
+                  priority={index === 0}
+                  // An unset ratio means the author supplied a designed banner:
+                  // fit the whole artwork on phones/tablets and only crop to the
+                  // viewport once there is desktop width. A chosen ratio always
+                  // crops, because that ratio is the intent.
+                  className={cn("object-center", aspect ? "object-cover" : "object-contain lg:object-cover")}
+                  sizes="100vw"
+                />
               ) : (
                 <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_15%,#16402a,#06140c)]" aria-hidden />
               )}
