@@ -535,7 +535,7 @@ function SectionBody({ section: s, index, source, project, settings, markets, pr
 
     case "brochure":
       return (
-        <div className="overflow-hidden rounded-3xl bg-space px-6 py-12 text-white sm:px-12">
+        <div className={cn("overflow-hidden rounded-3xl px-6 py-12 text-white sm:px-12", s.style?.backgroundImage || s.style?.background ? "bg-transparent" : "bg-space")}>
           <div className="flex flex-col items-start gap-6 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-brand-bright">
@@ -674,7 +674,7 @@ function SectionBody({ section: s, index, source, project, settings, markets, pr
 
     case "cta":
       return (
-        <div className="relative overflow-hidden rounded-3xl bg-space px-6 py-14 text-center text-white shadow-card sm:px-14">
+        <div className={cn("relative overflow-hidden rounded-3xl px-6 py-14 text-center text-white shadow-card sm:px-14", s.style?.backgroundImage || s.style?.background ? "bg-transparent" : "bg-space")}>
           {s.eyebrow && <p className="eyebrow !text-brand-bright">{s.eyebrow}</p>}
           {s.title && <h2 className="display mx-auto mt-4 max-w-3xl text-[clamp(1.8rem,3.6vw,2.8rem)]">{s.title}</h2>}
           {s.body && <p className="mx-auto mt-4 max-w-xl text-[15px] leading-relaxed text-white/70">{s.body}</p>}
