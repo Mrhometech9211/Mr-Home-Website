@@ -168,6 +168,11 @@ export type BuilderSection = {
   anchorId?: string | null;
   /** Per-device visibility. Missing device = visible. */
   visible?: SectionVisibility | null;
+  /** Logos: "auto" drops the card as soon as a logo image is present. */
+  logoCard?: "auto" | "on" | "off" | null;
+  /** Logos: stage height preset for the contained image. */
+  logoSize?: "sm" | "md" | "lg" | "xl" | "custom" | null;
+  logoSizePx?: number | null;
   style?: SectionStyle | null;
   /** Reusable block this section is linked to (linked mode only). */
   blockId?: number | null;
@@ -362,6 +367,9 @@ const sectionSchema = z.object({
   textPlacement: z.enum(["left", "center", "right"]).nullish(),
   textVAlign: z.enum(["top", "middle", "bottom"]).nullish(),
   caption: z.string().max(400).nullish(),
+  logoCard: z.enum(["auto", "on", "off"]).nullish(),
+  logoSize: z.enum(["sm", "md", "lg", "xl", "custom"]).nullish(),
+  logoSizePx: z.number().int().min(16).max(400).nullish(),
   videoUrl: z.string().max(500).nullish(),
   mapQuery: z.string().max(200).nullish(),
   ctaLabel: z.string().max(100).nullish(),

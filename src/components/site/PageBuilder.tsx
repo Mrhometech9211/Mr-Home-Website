@@ -12,7 +12,7 @@ import {
   type BuilderSection,
 } from "@/lib/page-builder";
 import { resolveBlocks } from "@/lib/builder-blocks";
-import { alignClass, bannerAspectRatio, containerClass, hasTextTint, overlayStyle, shellStyle, spacingClass } from "@/lib/builder-style";
+import { alignClass, bannerAspectRatio, containerClass, hasTextTint, logoBoxHeight, overlayStyle, shellStyle, spacingClass } from "@/lib/builder-style";
 import { safeHref } from "@/lib/url";
 import { cn } from "@/lib/utils";
 import { Reveal } from "@/components/site/Reveal";
@@ -863,25 +863,45 @@ function SectionBody({ section: s, index, source, project, settings, markets, pr
         </>
       );
 
-    case "logos":
+    case "logos": {
+      const boxH = logoBoxHeight(s);
+      const cardMode = s.logoCard ?? "auto";
       return (
         <>
           <Heading s={s} />
           <div className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-            {(s.items ?? []).map((it, i) => (
-              <div key={i} className="flex h-20 items-center justify-center rounded-2xl border border-ink/8 bg-white px-4">
-                {it.image ? (
-                  <div className="relative h-10 w-full">
-                    <Image src={it.image} alt={it.title || "Logo"} fill className="object-contain" sizes="180px" />
-                  </div>
-                ) : (
-                  <span className="text-[12.5px] font-semibold uppercase tracking-wider text-charcoal/55">{it.title}</span>
-                )}
-              </div>
-            ))}
+            {(s.items ?? []).map((it, i) => {
+              // Auto: a supplied logo stands on its own, the card is only a
+              // frame for text fallbacks. Authors can force either behaviour.
+              const showCard = cardMode === "on" || (cardMode === "auto" && !it.image);
+              return (
+                <div
+                  key={i}
+                  className={cn(
+                    "flex items-center justify-center rounded-2xl border px-4 py-5",
+                    showCard ? "border-ink/8 bg-white" : "border-transparent",
+                  )}
+                >
+                  {it.image ? (
+                    <div className="relative w-full" style={{ height: boxH }}>
+                      <Image
+                        src={it.image}
+                        alt={it.title || "Logo"}
+                        fill
+                        className="object-contain object-center"
+                        sizes="(min-width:1024px) 15vw, 45vw"
+                      />
+                    </div>
+                  ) : (
+                    <span className="py-1 text-[12.5px] font-semibold uppercase tracking-wider text-charcoal/55">{it.title}</span>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </>
       );
+    }
 
     case "team":
       return (

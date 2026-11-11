@@ -129,6 +129,26 @@ export function columnsClass(columns: number): string {
 }
 
 /**
+ * Height of the logo stage inside a logo tile. The image is contained, so a
+ * wide or square logo keeps its own ratio at whatever height is chosen.
+ */
+export function logoBoxHeight(section: BuilderSection): number {
+  if (section.logoSize === "custom") {
+    return Math.min(400, Math.max(16, Math.round(section.logoSizePx ?? 64)));
+  }
+  switch (section.logoSize) {
+    case "sm":
+      return 28;
+    case "lg":
+      return 64;
+    case "xl":
+      return 96;
+    default:
+      return 40;
+  }
+}
+
+/**
  * True when a text tint is configured. The renderer then adds `pb-tint` so the
  * heading/paragraph colour utilities inside built-in components inherit it.
  */

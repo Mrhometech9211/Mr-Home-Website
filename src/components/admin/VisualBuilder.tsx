@@ -1212,6 +1212,33 @@ function ContentTab({
         </Group>
       )}
 
+      {s.type === "logos" && (
+        <Group title="Logos">
+          <Field label="Logo size">
+            <select value={s.logoSize ?? "md"} onChange={(e) => onChange({ logoSize: e.target.value as BuilderSection["logoSize"] })} className={inputCls} disabled={!canWrite}>
+              <option value="sm">Small</option>
+              <option value="md">Medium</option>
+              <option value="lg">Large</option>
+              <option value="xl">Extra large</option>
+              <option value="custom">Custom…</option>
+            </select>
+          </Field>
+          {s.logoSize === "custom" && (
+            <Field label="Logo height (px)">
+              <input type="number" min={16} max={400} value={s.logoSizePx ?? 64} onChange={(e) => onChange({ logoSizePx: e.target.value === "" ? null : Number(e.target.value) })} className={inputCls} disabled={!canWrite} />
+            </Field>
+          )}
+          <Field label="Card background">
+            <select value={s.logoCard ?? "auto"} onChange={(e) => onChange({ logoCard: e.target.value as BuilderSection["logoCard"] })} className={inputCls} disabled={!canWrite}>
+              <option value="auto">Auto — none for uploaded logos</option>
+              <option value="on">Always show card</option>
+              <option value="off">Never show card</option>
+            </select>
+          </Field>
+          <p className="text-[11px] leading-snug text-charcoal/60">Logos keep their own shape — the image is contained, never stretched or cropped.</p>
+        </Group>
+      )}
+
       {s.type === "banner" && (
         <Group title="Banner">
           <Field label="Aspect ratio">
