@@ -535,14 +535,14 @@ function SectionBody({ section: s, index, source, project, settings, markets, pr
 
     case "brochure":
       return (
-        <div className={cn("overflow-hidden rounded-3xl px-6 py-12 text-white sm:px-12", s.style?.backgroundImage || s.style?.background ? "bg-transparent" : "bg-space")}>
+        <div className={cn("overflow-hidden rounded-3xl px-6 py-12 sm:px-12", !hasTextTint(s) && "text-white", s.style?.backgroundImage || s.style?.background ? "bg-transparent" : "bg-space")}>
           <div className="flex flex-col items-start gap-6 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-brand-bright">
                 <FileText className="h-4 w-4" /> {s.eyebrow || "Brochure"}
               </p>
               <h2 className="display mt-3 text-[clamp(1.6rem,3vw,2.4rem)]">{s.title || "Download the brochure"}</h2>
-              {s.body && <p className="mt-2 max-w-2xl text-[14.5px] leading-relaxed text-white/70">{s.body}</p>}
+              {s.body && <p className="mt-2 max-w-2xl text-[14.5px] leading-relaxed opacity-70">{s.body}</p>}
             </div>
             <div className="shrink-0">
               {project ? (
@@ -674,10 +674,10 @@ function SectionBody({ section: s, index, source, project, settings, markets, pr
 
     case "cta":
       return (
-        <div className={cn("relative overflow-hidden rounded-3xl px-6 py-14 text-center text-white shadow-card sm:px-14", s.style?.backgroundImage || s.style?.background ? "bg-transparent" : "bg-space")}>
+        <div className={cn("relative overflow-hidden rounded-3xl px-6 py-14 text-center shadow-card sm:px-14", !hasTextTint(s) && "text-white", s.style?.backgroundImage || s.style?.background ? "bg-transparent" : "bg-space")}>
           {s.eyebrow && <p className="eyebrow !text-brand-bright">{s.eyebrow}</p>}
           {s.title && <h2 className="display mx-auto mt-4 max-w-3xl text-[clamp(1.8rem,3.6vw,2.8rem)]">{s.title}</h2>}
-          {s.body && <p className="mx-auto mt-4 max-w-xl text-[15px] leading-relaxed text-white/70">{s.body}</p>}
+          {s.body && <p className="mx-auto mt-4 max-w-xl text-[15px] leading-relaxed opacity-70">{s.body}</p>}
           <Buttons s={s} center />
         </div>
       );
