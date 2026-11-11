@@ -225,23 +225,36 @@ function SectionBody({ section: s, index, source, project, settings, markets, pr
       const strength = Math.min(90, Math.max(0, s.style?.overlay ?? 55)) / 100;
       const h = s.textPlacement ?? "center";
       const v = s.textVAlign ?? "middle";
+      // Artwork-only banners (copy baked into the image) can size themselves to
+      // the picture on narrow screens; banners carrying live copy still need a
+      // tall stage to hold the headline.
+      const hasCopy = Boolean(s.eyebrow || s.title || s.subtitle || s.ctaLabel || s.cta2Label);
       return (
         <figure className="m-0">
           <div className="relative -mx-4 overflow-hidden rounded-3xl bg-space sm:-mx-6">
-            <div className={cn("relative flex", !aspect && "min-h-[240px] sm:min-h-[320px] lg:min-h-[380px]")} style={aspect ? { aspectRatio: aspect, minHeight: 200 } : undefined}>
+            <div
+              className={cn("relative flex", !aspect && (hasCopy ? "min-h-[240px] sm:min-h-[320px] lg:min-h-[380px]" : "lg:min-h-[380px]"))}
+              style={aspect ? { aspectRatio: aspect, minHeight: 200 } : undefined}
+            >
               {s.image ? (
-                <Image
-                  src={s.image}
-                  alt=""
-                  fill
-                  priority={index === 0}
-                  // An unset ratio means the author supplied a designed banner:
-                  // fit the whole artwork on phones/tablets and only crop to the
-                  // viewport once there is desktop width. A chosen ratio always
-                  // crops, because that ratio is the intent.
-                  className={cn("object-center", aspect ? "object-cover" : "object-contain lg:object-cover")}
-                  sizes="100vw"
-                />
+                aspect || hasCopy ? (
+                  <Image
+                    src={s.image}
+                    alt=""
+                    fill
+                    priority={index === 0}
+                    className="object-cover object-center"
+                    sizes="100vw"
+                  />
+                ) : (
+                  // Whole artwork, its own height: no crop and no letterbox bars
+                  // below desktop. A plain img keeps the intrinsic ratio without
+                  // needing stored dimensions.
+                  <>
+                    <img src={s.image} alt="" className="block h-auto w-full lg:hidden" />
+                    <Image src={s.image} alt="" fill priority={index === 0} className="hidden object-cover object-center lg:block" sizes="100vw" />
+                  </>
+                )
               ) : (
                 <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_15%,#16402a,#06140c)]" aria-hidden />
               )}
