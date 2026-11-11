@@ -42,6 +42,7 @@ import {
   type SectionStyle,
 } from "@/lib/page-builder";
 import { cn } from "@/lib/utils";
+import { logoBoxHeight } from "@/lib/builder-style";
 
 /**
  * Universal visual builder (Phase 11).
@@ -336,12 +337,88 @@ export function VisualBuilder({ target, initialSections, canWrite, canPublish, o
     [sections],
   );
 
+  const patchRef = useRef<(id: string, patch: Partial<BuilderSection>) => void>(() => {});
+
+  // Drag a logo straight on the canvas: grab a tile, drag up/down to scale it.
+  // Previewed live on the element itself, committed once on release so the
+  // autosave only fires once per gesture.
+  useEffect(() => {
+    const frame = iframeRef.current;
+    if (!frame || selected?.type !== "logos") return;
+    let detach: (() => void) | null = null;
+
+    const attach = () => {
+      detach?.();
+      const doc = frame.contentDocument;
+      if (!doc) return;
+      const style = doc.createElement("style");
+      style.textContent = "[data-pb-logo-stage]{cursor:ns-resize;outline:1px dashed rgba(16,185,129,.6);outline-offset:3px;border-radius:4px}[data-pb-logo-stage]:hover{outline-color:#059669}";
+      doc.head.appendChild(style);
+
+      let drag: { el: HTMLElement; startY: number; startH: number; scale: number } | null = null;
+
+      const onMove = (e: MouseEvent) => {
+        if (!drag) return;
+        const next = Math.min(400, Math.max(16, Math.round(drag.startH + (e.clientY - drag.startY) / drag.scale)));
+        drag.el.style.height = `${next}px`;
+      };
+
+      const onUp = () => {
+        if (!drag) return;
+        const px = Math.round(parseFloat(drag.el.style.height) || drag.startH);
+        doc.removeEventListener("mousemove", onMove);
+        doc.removeEventListener("mouseup", onUp);
+        drag = null;
+        if (selectedRef.current) patchRef.current(selectedRef.current, { logoSize: "custom", logoSizePx: px });
+      };
+
+      const onDown = (e: MouseEvent) => {
+        const el = (e.target as HTMLElement | null)?.closest?.("[data-pb-logo-stage]") as HTMLElement | null;
+        if (!el) return;
+        e.preventDefault();
+        // The canvas may be scaled down by "Fit", so convert screen pixels to
+        // the frame's own CSS pixels before applying the delta.
+        const rendered = frame.getBoundingClientRect().width;
+        drag = {
+          el,
+          startY: e.clientY,
+          startH: parseFloat(el.style.height) || el.offsetHeight || 40,
+          scale: frame.clientWidth ? Math.max(0.15, rendered / frame.clientWidth) : 1,
+        };
+        doc.addEventListener("mousemove", onMove);
+        doc.addEventListener("mouseup", onUp);
+      };
+
+      doc.addEventListener("mousedown", onDown);
+      detach = () => {
+        doc.removeEventListener("mousedown", onDown);
+        doc.removeEventListener("mousemove", onMove);
+        doc.removeEventListener("mouseup", onUp);
+        style.remove();
+        detach = null;
+      };
+    };
+
+    frame.addEventListener("load", attach);
+    attach();
+    return () => {
+      frame.removeEventListener("load", attach);
+      detach?.();
+    };
+  }, [selected?.type, selected?.id, previewKey]);
+
   const patchSection = useCallback(
     (id: string, patch: Partial<BuilderSection>) => {
       commit(sections.map((s) => (s.id === id ? { ...s, ...patch } : s)));
     },
     [commit, sections],
   );
+
+  // Keep the drag handler pointed at the latest commit function so a gesture
+  // never writes back a stale section list.
+  useEffect(() => {
+    patchRef.current = patchSection;
+  }, [patchSection]);
 
   const patchStyle = useCallback(
     (id: string, patch: Partial<SectionStyle>) => {
@@ -1223,6 +1300,19 @@ function ContentTab({
               <option value="custom">Custom…</option>
             </select>
           </Field>
+          <Field label={`Logo scale — ${logoBoxHeight(s)}px`}>
+            <input
+              type="range"
+              min={16}
+              max={320}
+              step={2}
+              value={logoBoxHeight(s)}
+              onChange={(e) => onChange({ logoSize: "custom", logoSizePx: Number(e.target.value) })}
+              className="w-full accent-emerald-600"
+              disabled={!canWrite}
+            />
+          </Field>
+          <p className="text-[11px] leading-snug text-charcoal/60">Or grab a logo in the canvas and drag up / down — it commits when you let go.</p>
           {s.logoSize === "custom" && (
             <Field label="Logo height (px)">
               <input type="number" min={16} max={400} value={s.logoSizePx ?? 64} onChange={(e) => onChange({ logoSizePx: e.target.value === "" ? null : Number(e.target.value) })} className={inputCls} disabled={!canWrite} />

@@ -883,7 +883,7 @@ function SectionBody({ section: s, index, source, project, settings, markets, pr
                   )}
                 >
                   {it.image ? (
-                    <div className="relative w-full" style={{ height: boxH }}>
+                    <div className="relative w-full" style={{ height: boxH }} data-pb-logo-stage={i}>
                       <Image
                         src={it.image}
                         alt={it.title || "Logo"}
