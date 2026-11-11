@@ -1,6 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowRight, FileText, Mail, MapPin, MessageCircle, Phone } from "lucide-react";
+import { ArrowRight, Award, Check, FileText, Mail, MapPin, Megaphone, MessageCircle, Phone } from "lucide-react";
 import { getPublishedMarkets, getPublishedProjects, getSettings, type ProjectWithMarket } from "@/lib/content";
 import {
   mapEmbedUrl,
@@ -12,7 +12,7 @@ import {
   type BuilderSection,
 } from "@/lib/page-builder";
 import { resolveBlocks } from "@/lib/builder-blocks";
-import { alignClass, containerClass, hasTextTint, overlayStyle, shellStyle, spacingClass } from "@/lib/builder-style";
+import { alignClass, bannerAspectRatio, containerClass, hasTextTint, overlayStyle, shellStyle, spacingClass } from "@/lib/builder-style";
 import { safeHref } from "@/lib/url";
 import { cn } from "@/lib/utils";
 import { Reveal } from "@/components/site/Reveal";
@@ -216,19 +216,51 @@ function SectionBody({ section: s, index, source, project, settings, markets, pr
         </div>
       );
 
-    case "banner":
+    case "banner": {
+      // Ratio, scrim and copy placement are all author-controlled; any missing
+      // value falls back to the original centred banner so old sections render
+      // exactly as they did before these options existed.
+      const aspect = bannerAspectRatio(s);
+      const scrimOn = s.scrim !== false;
+      const strength = Math.min(90, Math.max(0, s.style?.overlay ?? 55)) / 100;
+      const h = s.textPlacement ?? "center";
+      const v = s.textVAlign ?? "middle";
       return (
-        <div className="relative -mx-4 overflow-hidden rounded-3xl bg-ink sm:-mx-6">
-          {s.image && <Image src={s.image} alt="" fill className="object-cover opacity-80" sizes="100vw" />}
-          <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(6,20,12,0.55),rgba(6,20,12,0.8))]" aria-hidden />
-          <div className="relative z-10 flex min-h-[380px] flex-col items-center justify-center px-6 py-16 text-center text-white">
-            {s.eyebrow && <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-white/75">{s.eyebrow}</p>}
-            {s.title && <h2 className="display mt-4 max-w-4xl text-[clamp(2rem,4.4vw,3.4rem)] text-white">{s.title}</h2>}
-            {s.subtitle && <p className="mt-3 max-w-2xl text-[16px] text-white/80">{s.subtitle}</p>}
-            <Buttons s={s} center />
+        <figure className="m-0">
+          <div className="relative -mx-4 overflow-hidden rounded-3xl bg-space sm:-mx-6">
+            <div className={cn("relative flex", !aspect && "min-h-[380px]")} style={aspect ? { aspectRatio: aspect } : undefined}>
+              {s.image ? (
+                <Image src={s.image} alt="" fill priority={index === 0} className="object-cover" sizes="100vw" />
+              ) : (
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_15%,#16402a,#06140c)]" aria-hidden />
+              )}
+              {scrimOn && (
+                <div
+                  className="absolute inset-0"
+                  aria-hidden
+                  style={{ background: `linear-gradient(180deg, rgba(6,20,12,${strength}), rgba(6,20,12,${Math.min(0.95, strength + 0.2)}))` }}
+                />
+              )}
+              <div
+                className={cn(
+                  "relative z-10 flex w-full flex-col px-6 py-12 text-white sm:px-10",
+                  v === "top" ? "justify-start" : v === "bottom" ? "justify-end" : "justify-center",
+                  h === "left" ? "items-start text-left" : h === "right" ? "items-end text-right" : "items-center text-center",
+                )}
+              >
+                <div className="max-w-3xl">
+                  {s.eyebrow && <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-white/75">{s.eyebrow}</p>}
+                  {s.title && <h2 className="display mt-4 text-[clamp(2rem,4.4vw,3.4rem)] text-white">{s.title}</h2>}
+                  {s.subtitle && <p className="mt-3 text-[16px] text-white/80">{s.subtitle}</p>}
+                  <Buttons s={s} center={h === "center"} />
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
+          {s.caption && <figcaption className="mt-2 px-1 text-[12.5px] text-charcoal/60">{s.caption}</figcaption>}
+        </figure>
       );
+    }
 
     case "heading":
       return (
@@ -735,6 +767,233 @@ function SectionBody({ section: s, index, source, project, settings, markets, pr
         </div>
       );
     }
+
+    case "alert":
+      return (
+        <div className="flex flex-col items-start gap-3 rounded-2xl border border-brand/25 bg-brand/5 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <p className="inline-flex items-center gap-2 text-[13.5px] font-medium text-ink">
+            <Megaphone className="h-4 w-4 shrink-0 text-brand" />
+            {s.title}
+          </p>
+          {s.ctaLabel && (
+            <Link href={safeHref(s.ctaHref || "#")} className="inline-flex shrink-0 items-center gap-1.5 text-[13px] font-semibold text-brand hover:text-brand-deep">
+              {s.ctaLabel} <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+          )}
+        </div>
+      );
+
+    case "quote":
+      return (
+        <figure className="mx-auto max-w-[900px] rounded-3xl border border-ink/8 bg-white p-8 shadow-card sm:p-12">
+          {s.eyebrow && <p className="eyebrow">{s.eyebrow}</p>}
+          <blockquote className="display mt-3 text-[clamp(1.35rem,2.6vw,2.05rem)] leading-snug text-ink">
+            &ldquo;{s.body || s.title}&rdquo;
+          </blockquote>
+          {(s.title || s.subtitle) && (
+            <figcaption className="mt-5 text-[13.5px]">
+              {s.title && <span className="font-semibold text-ink">{s.title}</span>}
+              {s.subtitle && <span className="text-charcoal/65">{s.title ? ` · ${s.subtitle}` : s.subtitle}</span>}
+            </figcaption>
+          )}
+        </figure>
+      );
+
+    case "checklist":
+      return (
+        <>
+          <Heading s={s} />
+          <ItemGrid items={s.items ?? []} columns={cols} render={(it) => (
+            <div className="flex items-start gap-3 rounded-2xl border border-ink/8 bg-white p-4 shadow-soft">
+              <span className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full bg-brand/10 text-brand">
+                <Check className="h-3.5 w-3.5" />
+              </span>
+              <div>
+                <p className="text-[14.5px] font-semibold text-ink">{it.title}</p>
+                {it.description && <p className="mt-0.5 text-[13px] leading-relaxed text-charcoal/70">{it.description}</p>}
+              </div>
+            </div>
+          )} />
+        </>
+      );
+
+    case "mosaic":
+      return (
+        <>
+          <Heading s={s} />
+          <div className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {(s.items ?? []).map((it, i) => (
+              <figure
+                key={i}
+                className={cn("relative m-0 overflow-hidden rounded-2xl bg-slate-100", i === 0 ? "col-span-2 row-span-2 aspect-square" : "aspect-[4/3]")}
+              >
+                {it.image && <Image src={it.image} alt={it.title || ""} fill className="object-cover" sizes="(min-width:640px) 25vw, 50vw" />}
+                {it.title && (
+                  <figcaption className="absolute inset-x-0 bottom-0 bg-[linear-gradient(0deg,rgba(6,20,12,0.72),transparent)] p-3 text-[12.5px] font-medium text-white">
+                    {it.title}
+                  </figcaption>
+                )}
+              </figure>
+            ))}
+          </div>
+        </>
+      );
+
+    case "logos":
+      return (
+        <>
+          <Heading s={s} />
+          <div className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+            {(s.items ?? []).map((it, i) => (
+              <div key={i} className="flex h-20 items-center justify-center rounded-2xl border border-ink/8 bg-white px-4">
+                {it.image ? (
+                  <div className="relative h-10 w-full">
+                    <Image src={it.image} alt={it.title || "Logo"} fill className="object-contain" sizes="180px" />
+                  </div>
+                ) : (
+                  <span className="text-[12.5px] font-semibold uppercase tracking-wider text-charcoal/55">{it.title}</span>
+                )}
+              </div>
+            ))}
+          </div>
+        </>
+      );
+
+    case "team":
+      return (
+        <>
+          <Heading s={s} />
+          <ItemGrid items={s.items ?? []} columns={cols} render={(it) => (
+            <div className="h-full overflow-hidden rounded-3xl border border-ink/8 bg-white shadow-card">
+              {it.image && (
+                <div className="relative aspect-[4/5] w-full bg-slate-100">
+                  <Image src={it.image} alt={it.title || ""} fill className="object-cover" sizes="(min-width:1024px) 30vw, 100vw" />
+                </div>
+              )}
+              <div className="p-5">
+                {it.label && <p className="text-[11px] font-bold uppercase tracking-wider text-brand">{it.label}</p>}
+                {it.title && <h3 className="mt-1 text-[16px] font-semibold text-ink">{it.title}</h3>}
+                {it.description && <p className="mt-2 text-[13.5px] leading-relaxed text-charcoal/70">{it.description}</p>}
+                {it.href && (
+                  <Link href={safeHref(it.href)} className="mt-4 inline-flex items-center gap-1.5 text-[13px] font-semibold text-brand">
+                    Contact <ArrowRight className="h-3.5 w-3.5" />
+                  </Link>
+                )}
+              </div>
+            </div>
+          )} />
+        </>
+      );
+
+    case "awards":
+      return (
+        <>
+          <Heading s={s} />
+          <ul className="mt-8 divide-y divide-ink/8 overflow-hidden rounded-3xl border border-ink/8 bg-white shadow-card">
+            {(s.items ?? []).map((it, i) => (
+              <li key={i} className="flex items-start gap-4 px-5 py-4">
+                <Award className="mt-0.5 h-4 w-4 shrink-0 text-brand" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-[14.5px] font-semibold text-ink">{it.title}</p>
+                  {it.description && <p className="mt-0.5 text-[13px] text-charcoal/70">{it.description}</p>}
+                </div>
+                {it.value && <span className="shrink-0 text-[12.5px] font-semibold text-charcoal/55">{it.value}</span>}
+              </li>
+            ))}
+          </ul>
+        </>
+      );
+
+    case "progress":
+      return (
+        <>
+          <Heading s={s} />
+          <div className="mt-8 space-y-5 rounded-3xl border border-ink/8 bg-white p-6 shadow-card">
+            {(s.items ?? []).map((it, i) => {
+              // Accept "60%", "60" or "0.6"-style text; clamp so a typo cannot
+              // push the bar outside its track.
+              const pct = Math.min(100, Math.max(0, Number(String(it.value ?? "").replace(/[^\d.]/g, "")) || 0));
+              return (
+                <div key={i}>
+                  <div className="flex items-baseline justify-between gap-3">
+                    <span className="text-[13.5px] font-semibold text-ink">{it.title}</span>
+                    <span className="text-[12.5px] text-charcoal/65">{it.value || `${pct}%`}</span>
+                  </div>
+                  <div
+                    className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100"
+                    role="progressbar"
+                    aria-valuenow={pct}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-label={it.title || "Progress"}
+                  >
+                    <div className="h-full rounded-full bg-brand" style={{ width: `${pct}%` }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      );
+
+    case "comparison":
+      return (
+        <>
+          <Heading s={s} />
+          <div className="mt-8 overflow-x-auto rounded-3xl border border-ink/8 bg-white shadow-card">
+            <table className="w-full min-w-[560px] text-left">
+              <thead className="bg-slate-50/80">
+                <tr>
+                  <th className="px-5 py-3 text-[11px] font-semibold uppercase tracking-wider text-charcoal/55">Feature</th>
+                  <th className="px-5 py-3 text-[13px] font-semibold text-ink">{s.subtitle || "Option A"}</th>
+                  <th className="px-5 py-3 text-[13px] font-semibold text-charcoal/70">{s.body || "Option B"}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-ink/8">
+                {(s.items ?? []).map((it, i) => (
+                  <tr key={i}>
+                    <td className="px-5 py-3 text-[13.5px] text-charcoal/75">{it.label || it.title}</td>
+                    <td className="px-5 py-3 text-[13.5px] font-medium text-ink">{it.value}</td>
+                    <td className="px-5 py-3 text-[13.5px] text-charcoal/65">{it.description}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      );
+
+    case "documents":
+      return (
+        <>
+          <Heading s={s} />
+          <div className="mt-8 grid gap-3 sm:grid-cols-2">
+            {(s.items ?? []).map((it, i) => {
+              const inner = (
+                <>
+                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-brand/10 text-brand">
+                    <FileText className="h-5 w-5" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[14.5px] font-semibold text-ink">{it.title}</span>
+                    {it.description && <span className="mt-0.5 block text-[13px] text-charcoal/70">{it.description}</span>}
+                  </span>
+                  {it.href && <ArrowRight className="h-4 w-4 shrink-0 text-brand" />}
+                </>
+              );
+              return it.href ? (
+                <a key={i} href={safeHref(it.href)} className="flex items-center gap-3 rounded-2xl border border-ink/8 bg-white p-4 hover:border-brand/40">
+                  {inner}
+                </a>
+              ) : (
+                <div key={i} className="flex items-center gap-3 rounded-2xl border border-ink/8 bg-white p-4">
+                  {inner}
+                </div>
+              );
+            })}
+          </div>
+        </>
+      );
 
     default:
       return null;

@@ -24,6 +24,8 @@ export function defaultSpacing(type: BuilderSection["type"]): SectionSpacing {
     case "divider":
     case "whatsapp":
       return "none";
+    case "alert":
+      return "sm";
     case "form":
     case "cta":
       return "lg";
@@ -79,6 +81,30 @@ export function shellStyle(section: BuilderSection): CSSProperties {
   if (s?.textColor) style.color = s.textColor;
   if (s?.minHeight) style.minHeight = `${s.minHeight}px`;
   return style;
+}
+
+/**
+ * Banner aspect ratio as a CSS `aspect-ratio` value, or null to fall back to
+ * the historical min-height banner. Accepts presets, "w:h", "w/h" and a bare
+ * number ("2.4" → 2.4:1). Invalid custom input yields null rather than CSS
+ * that would collapse the banner.
+ */
+export function bannerAspectRatio(section: BuilderSection): string | null {
+  const preset = section.ratio ?? "";
+  const raw = preset === "custom" ? (section.ratioCustom ?? "").trim() : preset;
+  if (!raw) return null;
+  const pair = /^(\d+(?:\.\d+)?)\s*[:/x]\s*(\d+(?:\.\d+)?)$/i.exec(raw);
+  if (pair) {
+    const w = Number(pair[1]);
+    const h = Number(pair[2]);
+    return w > 0 && h > 0 && w <= 20 && h <= 20 ? `${w} / ${h}` : null;
+  }
+  const single = /^(\d+(?:\.\d+)?)$/.exec(raw);
+  if (single) {
+    const r = Number(single[1]);
+    return r > 0 && r <= 10 ? `${r} / 1` : null;
+  }
+  return null;
 }
 
 /** Gradient scrim over a section background photo. */

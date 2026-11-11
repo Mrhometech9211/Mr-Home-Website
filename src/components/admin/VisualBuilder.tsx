@@ -27,6 +27,9 @@ import {
 import { api, Badge, Btn, Confirm, inputCls, labelCls, Modal, useToast } from "./ui";
 import { MediaPicker, type MediaRow } from "./MediaPicker";
 import {
+  BANNER_RATIOS,
+  BANNER_TEXT_PLACEMENT,
+  BANNER_TEXT_VERTICAL,
   CONTAINER_WIDTHS,
   IMAGE_LAYOUTS,
   SECTION_GROUPS,
@@ -92,7 +95,37 @@ function blankSection(type: BuilderSection["type"]): BuilderSection {
     case "hero":
       return { ...base, eyebrow: "Prestigious living at", title: "A headline that sells the place", subtitle: "", ctaLabel: "Explore the project", ctaHref: "/projects" };
     case "banner":
-      return { ...base, eyebrow: "Dubai · Luxury · Lifestyle", title: "Headline over a photo", ctaLabel: "Enquire now", ctaHref: "/contact" };
+      return {
+        ...base,
+        eyebrow: "Dubai · Luxury · Lifestyle",
+        title: "Headline over a photo",
+        ctaLabel: "Enquire now",
+        ctaHref: "/contact",
+        ratio: "16:9",
+        scrim: true,
+        textPlacement: "center",
+        textVAlign: "middle",
+      };
+    case "alert":
+      return { ...base, title: "Launch offer — 5% down payment", ctaLabel: "See details", ctaHref: "/projects" };
+    case "quote":
+      return { ...base, body: "They found us the right unit, at the right price, and handled every document.", title: "Client name", subtitle: "Investor" };
+    case "checklist":
+      return { ...base, title: "What's included", items: [{ title: "Freehold ownership" }, { title: "Flexible payment plan" }, { title: "Property management" }] };
+    case "mosaic":
+      return { ...base, title: "A closer look", items: [{ image: "", title: "" }, { image: "", title: "" }, { image: "", title: "" }, { image: "", title: "" }, { image: "", title: "" }] };
+    case "logos":
+      return { ...base, title: "Developers we work with", items: [{ title: "Developer" }, { title: "Developer" }, { title: "Developer" }, { title: "Developer" }] };
+    case "team":
+      return { ...base, title: "Meet the team", items: [{ image: "", title: "Full name", label: "Role", description: "One line about this person.", href: "/contact" }] };
+    case "awards":
+      return { ...base, title: "Awards & press", items: [{ title: "Award name", description: "Awarding body", value: "2025" }] };
+    case "progress":
+      return { ...base, title: "Construction progress", items: [{ title: "Structure", value: "60%" }, { title: "Finishes", value: "25%" }] };
+    case "comparison":
+      return { ...base, title: "Compare your options", subtitle: "Option A", body: "Option B", items: [{ label: "Freehold ownership", value: "Yes", description: "No" }] };
+    case "documents":
+      return { ...base, title: "Downloads", items: [{ title: "Project brochure", description: "PDF · 4 MB", href: "" }] };
     case "heading":
       return { ...base, eyebrow: "Section", title: "Section heading" };
     case "text":
@@ -175,6 +208,16 @@ const ITEM_FIELDS: Partial<Record<BuilderSection["type"], Array<keyof BuilderIte
   divider: [],
   heading: [],
   video: [],
+  quote: [],
+  checklist: ["title", "description"],
+  alert: [],
+  mosaic: ["image", "title"],
+  logos: ["image", "title"],
+  team: ["image", "title", "label", "description", "href"],
+  awards: ["title", "description", "value"],
+  progress: ["title", "value"],
+  comparison: ["label", "value", "description"],
+  documents: ["title", "description", "href"],
 };
 
 const FIELD_LABEL: Record<keyof BuilderItem, string> = {
@@ -190,6 +233,16 @@ const FIELD_LABEL: Record<keyof BuilderItem, string> = {
 const TYPE_ICON: Record<string, string> = {
   hero: "◧",
   banner: "▤",
+  alert: "!",
+  quote: "”",
+  checklist: "✓",
+  mosaic: "▥",
+  logos: "◫",
+  team: "◍",
+  awards: "★",
+  progress: "▰",
+  comparison: "⇄",
+  documents: "⌸",
   heading: "H",
   text: "¶",
   imageText: "▣",
@@ -1084,8 +1137,8 @@ function ContentTab({
   const itemFields = ITEM_FIELDS[s.type];
   const showEyebrow = !["divider", "form", "related", "gallery"].includes(s.type);
   const showTitle = !["divider"].includes(s.type);
-  const showSubtitle = ["hero", "banner", "imageText"].includes(s.type);
-  const showBody = ["hero", "text", "imageText", "cta", "form", "brochure", "location", "whatsapp", "columns", "cards"].includes(s.type);
+  const showSubtitle = ["hero", "banner", "imageText", "quote", "comparison"].includes(s.type);
+  const showBody = ["hero", "text", "imageText", "cta", "form", "brochure", "location", "whatsapp", "columns", "cards", "quote", "comparison"].includes(s.type);
   const showImage = ["hero", "banner", "text", "imageText", "brochure"].includes(s.type);
   const showVideo = s.type === "video";
   const showMap = s.type === "location";
@@ -1103,7 +1156,7 @@ function ContentTab({
         </Field>
       )}
       {showTitle && (
-        <Field label="Title">
+        <Field label={s.type === "quote" ? "Attribution" : s.type === "alert" ? "Message" : s.type === "comparison" ? "Heading" : "Title"}>
           <input value={s.title ?? ""} onChange={(e) => onChange({ title: e.target.value })} className={inputCls} disabled={!canWrite} />
         </Field>
       )}
@@ -1113,7 +1166,7 @@ function ContentTab({
         </Field>
       )}
       {showBody && (
-        <Field label={s.type === "whatsapp" ? "Prefilled message" : "Body"}>
+        <Field label={s.type === "whatsapp" ? "Prefilled message" : s.type === "quote" ? "Quote" : s.type === "comparison" ? "Right column heading" : "Body"}>
           <textarea value={s.body ?? ""} onChange={(e) => onChange({ body: e.target.value })} className={cn(inputCls, "h-24 py-2")} disabled={!canWrite} />
         </Field>
       )}
@@ -1153,6 +1206,42 @@ function ContentTab({
           </select>
         </Field>
       )}
+        </Group>
+      )}
+
+      {s.type === "banner" && (
+        <Group title="Banner">
+          <Field label="Aspect ratio">
+            <select value={s.ratio ?? ""} onChange={(e) => onChange({ ratio: (e.target.value || null) as BuilderSection["ratio"] })} className={inputCls} disabled={!canWrite}>
+              <option value="">Original height</option>
+              {BANNER_RATIOS.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+            </select>
+          </Field>
+          {s.ratio === "custom" && (
+            <Field label="Custom ratio">
+              <input value={s.ratioCustom ?? ""} onChange={(e) => onChange({ ratioCustom: e.target.value })} className={inputCls} disabled={!canWrite} placeholder="7:3 or 2.4" />
+            </Field>
+          )}
+          <label className="flex items-center gap-2 text-[12.5px] text-ink">
+            <input type="checkbox" checked={s.scrim !== false} onChange={(e) => onChange({ scrim: e.target.checked })} disabled={!canWrite} className="h-4 w-4 accent-[#1f8f3a]" />
+            Dark scrim over the photo
+          </label>
+          <div className="grid grid-cols-2 gap-2">
+            <Field label="Text placement">
+              <select value={s.textPlacement ?? "center"} onChange={(e) => onChange({ textPlacement: e.target.value as BuilderSection["textPlacement"] })} className={inputCls} disabled={!canWrite}>
+                {BANNER_TEXT_PLACEMENT.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+              </select>
+            </Field>
+            <Field label="Vertical">
+              <select value={s.textVAlign ?? "middle"} onChange={(e) => onChange({ textVAlign: e.target.value as BuilderSection["textVAlign"] })} className={inputCls} disabled={!canWrite}>
+                {BANNER_TEXT_VERTICAL.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+              </select>
+            </Field>
+          </div>
+          <Field label="Caption">
+            <input value={s.caption ?? ""} onChange={(e) => onChange({ caption: e.target.value })} className={inputCls} disabled={!canWrite} placeholder="Shown under the banner" />
+          </Field>
+          <p className="text-[11px] leading-snug text-charcoal/60">Scrim strength is the Image scrim slider on the Design tab.</p>
         </Group>
       )}
 
@@ -1243,7 +1332,7 @@ function DesignTab({ section: s, canWrite, onStyle }: { section: BuilderSection;
       </Field>
       <div>
         <span className={labelCls}>Image scrim {style.overlay ?? 45}%</span>
-        <input type="range" min={0} max={90} step={5} value={style.overlay ?? 45} onChange={(e) => onStyle({ overlay: Number(e.target.value) })} className="w-full accent-[#1f8f3a]" disabled={!canWrite || !style.backgroundImage} aria-label="Scrim strength" />
+        <input type="range" min={0} max={90} step={5} value={style.overlay ?? (s.type === "banner" ? 55 : 45)} onChange={(e) => onStyle({ overlay: Number(e.target.value) })} className="w-full accent-[#1f8f3a]" disabled={!canWrite || (!style.backgroundImage && s.type !== "banner")} aria-label="Scrim strength" />
       </div>
       </Group>
       <Group title="Layout">

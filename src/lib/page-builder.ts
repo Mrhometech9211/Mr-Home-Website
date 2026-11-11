@@ -23,11 +23,16 @@ export const SECTION_TYPES = [
   { value: "imageText", label: "Image + text", group: "Basics", hint: "Photo paired with copy in two columns" },
   { value: "columns", label: "Row / columns", group: "Basics", hint: "Two to four columns, each with its own image, copy and link" },
   { value: "divider", label: "Divider", group: "Basics", hint: "A rule or empty spacer between sections" },
+  { value: "alert", label: "Announcement bar", group: "Basics", hint: "Compact notice strip with an optional button" },
   // Media
   { value: "video", label: "Video embed", group: "Media", hint: "YouTube or Vimeo player with a caption" },
   { value: "gallery", label: "Gallery", group: "Media", hint: "Responsive image grid with captions" },
+  { value: "mosaic", label: "Image mosaic", group: "Media", hint: "Mixed-size image grid with an optional caption per tile" },
+  { value: "logos", label: "Logo row", group: "Media", hint: "Partner, developer or press logos" },
   // Content
   { value: "cards", label: "Cards", group: "Content", hint: "Image or text cards in a grid" },
+  { value: "quote", label: "Pull quote", group: "Content", hint: "Large quotation with an attribution line" },
+  { value: "checklist", label: "Checklist", group: "Content", hint: "Tick-list of included features" },
   { value: "highlights", label: "Highlights", group: "Content", hint: "Compact feature cards with an icon or number" },
   { value: "amenities", label: "Amenities", group: "Content", hint: "Icon grid of facilities and services" },
   { value: "specs", label: "Specifications", group: "Content", hint: "Label and value rows, e.g. unit type, area, view" },
@@ -35,12 +40,17 @@ export const SECTION_TYPES = [
   { value: "steps", label: "Steps", group: "Content", hint: "Numbered process or timeline" },
   { value: "faq", label: "FAQ", group: "Content", hint: "Collapsible question and answer list" },
   { value: "testimonials", label: "Testimonials", group: "Content", hint: "Quotes with author and role" },
+  { value: "team", label: "Team / agents", group: "Content", hint: "People cards with photo, name and role" },
+  { value: "awards", label: "Awards & press", group: "Content", hint: "Award or press mentions with a year" },
+  { value: "progress", label: "Progress bars", group: "Content", hint: "Labelled bars for construction or sales progress" },
+  { value: "comparison", label: "Comparison table", group: "Content", hint: "Two options compared row by row" },
   // Project modules
   { value: "floorPlans", label: "Floor plans", group: "Project", hint: "Plan images with unit labels and areas" },
   { value: "pricing", label: "Payment plans", group: "Project", hint: "Plan cards with price, deposit and terms" },
   { value: "brochure", label: "Brochure download", group: "Project", hint: "Panel prompting visitors to download the brochure" },
   { value: "location", label: "Location & map", group: "Project", hint: "Map embed plus nearby landmarks" },
   { value: "related", label: "Related projects", group: "Project", hint: "Cards for other published projects" },
+  { value: "documents", label: "Downloads", group: "Project", hint: "Document cards with links, e.g. brochure or price list" },
   // Conversion
   { value: "cta", label: "Call to action", group: "Conversion", hint: "Dark panel with headline and buttons" },
   { value: "form", label: "Inquiry form", group: "Conversion", hint: "The site's lead form with all current fields" },
@@ -68,6 +78,32 @@ export const IMAGE_LAYOUTS = [
   { value: "below", label: "Below the text" },
 ] as const;
 export type ImageLayout = (typeof IMAGE_LAYOUTS)[number]["value"];
+
+/** Banner aspect presets. `custom` reads `ratioCustom` ("7:3", "2.4"). */
+export const BANNER_RATIOS = [
+  { value: "21:9", label: "21:9 — Cinematic" },
+  { value: "16:9", label: "16:9 — Widescreen" },
+  { value: "3:2", label: "3:2 — Landscape" },
+  { value: "4:3", label: "4:3 — Classic" },
+  { value: "1:1", label: "1:1 — Square" },
+  { value: "4:5", label: "4:5 — Portrait" },
+  { value: "custom", label: "Custom…" },
+] as const;
+export type BannerRatio = (typeof BANNER_RATIOS)[number]["value"];
+
+export const BANNER_TEXT_PLACEMENT = [
+  { value: "left", label: "Left" },
+  { value: "center", label: "Centre" },
+  { value: "right", label: "Right" },
+] as const;
+export type BannerTextPlacement = (typeof BANNER_TEXT_PLACEMENT)[number]["value"];
+
+export const BANNER_TEXT_VERTICAL = [
+  { value: "top", label: "Top" },
+  { value: "middle", label: "Middle" },
+  { value: "bottom", label: "Bottom" },
+] as const;
+export type BannerTextVertical = (typeof BANNER_TEXT_VERTICAL)[number]["value"];
 
 export const CONTAINER_WIDTHS = [
   { value: "narrow", label: "Narrow", px: 900 },
@@ -143,6 +179,18 @@ export type BuilderSection = {
   image?: string | null;
   /** Image placement inside the section — beside/above/below the copy. */
   imageLayout?: ImageLayout | null;
+  /** Banner aspect preset; `custom` uses `ratioCustom`. Missing = min-height. */
+  ratio?: BannerRatio | null;
+  /** Free-form ratio for `ratio: "custom"` — "7:3", "16/9" or a number like 2.4. */
+  ratioCustom?: string | null;
+  /** Dark scrim over the banner photo. Missing = on. */
+  scrim?: boolean | null;
+  /** Horizontal placement of the banner copy. Missing = centre. */
+  textPlacement?: BannerTextPlacement | null;
+  /** Vertical placement of the banner copy. Missing = middle. */
+  textVAlign?: BannerTextVertical | null;
+  /** Small caption rendered under a banner or figure. */
+  caption?: string | null;
   videoUrl?: string | null;
   /** Address/place searched in the map embed for the location section. */
   mapQuery?: string | null;
@@ -302,6 +350,18 @@ const sectionSchema = z.object({
   body: z.string().max(20000).nullish(),
   image: mediaField,
   imageLayout: z.enum(["left", "right", "above", "below"]).nullish(),
+  ratio: z.enum(["21:9", "16:9", "3:2", "4:3", "1:1", "4:5", "custom"]).nullish(),
+  ratioCustom: z
+    .string()
+    .trim()
+    .max(12)
+    .refine((v) => v === "" || /^(\d+(?:\.\d+)?(?:\s*[:/x]\s*\d+(?:\.\d+)?)?)$/i.test(v), "Use 16:9 or a number like 2.4")
+    .nullish()
+    .transform((v) => (v && v.length ? v : null)),
+  scrim: z.boolean().nullish(),
+  textPlacement: z.enum(["left", "center", "right"]).nullish(),
+  textVAlign: z.enum(["top", "middle", "bottom"]).nullish(),
+  caption: z.string().max(400).nullish(),
   videoUrl: z.string().max(500).nullish(),
   mapQuery: z.string().max(200).nullish(),
   ctaLabel: z.string().max(100).nullish(),
@@ -338,6 +398,9 @@ export function sectionColumns(section: BuilderSection): number {
     case "amenities":
     case "highlights":
       return 3;
+    case "checklist":
+    case "documents":
+      return 2;
     case "gallery":
     case "floorPlans":
     case "pricing":
