@@ -16,7 +16,10 @@ function securityHeaders(res: NextResponse, isAdmin: boolean, isPreviewRoute = f
     "connect-src 'self' https:" + (isProd ? "" : " http://127.0.0.1:* http://localhost:*"),
     // 'self' is required: the visual builder renders its live canvas in a
     // same-origin iframe (/preview/pages/<id>, /preview/projects/<id>).
-    "frame-src 'self' https://maps.google.com https://www.google.com https://www.youtube.com https://player.vimeo.com",
+    // youtube-nocookie is what our own video helper emits for YouTube links
+    // (see embedUrl in lib/page-builder.ts); without it every video section is
+    // refused by the browser while youtube.com alone would never be requested.
+    "frame-src 'self' https://maps.google.com https://www.google.com https://www.youtube.com https://www.youtube-nocookie.com https://player.vimeo.com",
     "worker-src 'self' blob:",
     "object-src 'none'",
     "base-uri 'self'",

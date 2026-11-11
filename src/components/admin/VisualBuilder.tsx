@@ -726,12 +726,15 @@ export function VisualBuilder({ target, initialSections, canWrite, canPublish, o
               className="mx-auto overflow-hidden rounded-xl border border-ink/10 bg-white shadow-sm"
               style={{ width: Math.round(DEVICE_WIDTH[device] * (fit ? Math.min(1, (canvasWidth || DEVICE_WIDTH[device]) / DEVICE_WIDTH[device]) : 1)), height: CANVAS_HEIGHT }}
             >
+              {/* allow-scripts lets the canvas hydrate like the real page (map,
+                  video, FAQ); allow-forms keeps the inquiry form usable. The frame
+                  is our own auth-gated page and frame-ancestors still guards embedding. */}
               <iframe
                 key={previewKey}
                 ref={iframeRef}
                 src={`${target.previewSrc}${target.previewSrc.includes("?") ? "&" : "?"}k=${previewKey}`}
                 title={`${target.title} preview`}
-                sandbox="allow-same-origin"
+                sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
                 style={{
                   width: DEVICE_WIDTH[device],
                   height: Math.round(CANVAS_HEIGHT / (fit ? Math.min(1, (canvasWidth || DEVICE_WIDTH[device]) / DEVICE_WIDTH[device]) : 1)),
