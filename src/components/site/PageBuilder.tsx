@@ -228,7 +228,7 @@ function SectionBody({ section: s, index, source, project, settings, markets, pr
       return (
         <figure className="m-0">
           <div className="relative -mx-4 overflow-hidden rounded-3xl bg-space sm:-mx-6">
-            <div className={cn("relative flex", !aspect && "min-h-[380px]")} style={aspect ? { aspectRatio: aspect } : undefined}>
+            <div className={cn("relative flex", !aspect && "min-h-[240px] sm:min-h-[320px] lg:min-h-[380px]")} style={aspect ? { aspectRatio: aspect, minHeight: 200 } : undefined}>
               {s.image ? (
                 <Image src={s.image} alt="" fill priority={index === 0} className="object-cover" sizes="100vw" />
               ) : (
@@ -243,7 +243,7 @@ function SectionBody({ section: s, index, source, project, settings, markets, pr
               )}
               <div
                 className={cn(
-                  "relative z-10 flex w-full flex-col px-6 py-12 text-white sm:px-10",
+                  "relative z-10 flex w-full flex-col px-5 py-10 text-white sm:px-10 sm:py-12",
                   v === "top" ? "justify-start" : v === "bottom" ? "justify-end" : "justify-center",
                   h === "left" ? "items-start text-left" : h === "right" ? "items-end text-right" : "items-center text-center",
                 )}
