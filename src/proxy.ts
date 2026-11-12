@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 const SESSION_COOKIE = "mrh_session";
 const isProd = process.env.NODE_ENV === "production";
 
-function securityHeaders(res: NextResponse, isAdmin: boolean, isPreviewRoute = false) {
+function securityHeaders(res: NextResponse, isAdmin: boolean, frameable = false) {
   const csp = [
     "default-src 'self'",
     `script-src 'self' 'unsafe-inline'${isProd ? "" : " 'unsafe-eval'"} https://www.googletagmanager.com https://connect.facebook.net`,
@@ -27,12 +27,14 @@ function securityHeaders(res: NextResponse, isAdmin: boolean, isPreviewRoute = f
     // Only the private /preview/* canvas may be framed, and only by this site:
     // the visual builder mounts it in a same-origin iframe. Everything else
     // stays unframeable (clickjacking protection).
-    `frame-ancestors ${isPreviewRoute ? "'self'" : "'none'"}`,
+    `frame-ancestors ${frameable ? "'self'" : "'none'"}`,
     ...(isProd ? ["upgrade-insecure-requests"] : []),
   ].join("; ");
   res.headers.set("Content-Security-Policy", csp);
   res.headers.set("X-Content-Type-Options", "nosniff");
-  res.headers.set("X-Frame-Options", isPreviewRoute ? "SAMEORIGIN" : "DENY");
+  // DENY on /api/media made the admin's document viewer show
+  // "refused to connect"; same-origin framing is safe for our own files.
+  res.headers.set("X-Frame-Options", frameable ? "SAMEORIGIN" : "DENY");
   res.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
   res.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()");
   res.headers.set("Cross-Origin-Opener-Policy", "same-origin");
@@ -72,11 +74,11 @@ export function proxy(req: NextRequest) {
     }
   }
 
-  return securityHeaders(
-    NextResponse.next(),
-    isAdmin || pathname.startsWith("/api/admin"),
-    pathname.startsWith("/preview/"),
-  );
+  const frameable =
+    pathname.startsWith("/preview/") ||
+    pathname.startsWith("/api/media/") ||
+    pathname.startsWith("/api/brochures/");
+  return securityHeaders(NextResponse.next(), isAdmin || pathname.startsWith("/api/admin"), frameable);
 }
 
 export const config = {

@@ -811,7 +811,7 @@ export function MediaLibrary({ canWrite }: { canWrite: boolean }) {
         {active && (
           <div className="grid gap-6 md:grid-cols-2">
             <div className="overflow-hidden rounded-xl border border-ink/8 bg-slate-50">
-              {active.mimeType.startsWith("video/") ? <video src={active.url} controls className="w-full" /> : active.mimeType === "application/pdf" ? <iframe src={active.url} title={active.filename} className="h-[420px] w-full" /> : <div className="relative aspect-[4/3]"><MediaThumb m={active} className="object-contain" /></div>}
+              {active.mimeType.startsWith("video/") ? <video src={active.url} controls className="w-full" /> : active.mimeType === "application/pdf" ? <iframe src={active.url} title={active.filename} className="h-[420px] w-full" /> : <div className="relative aspect-[4/3]"><MediaThumb m={active} className="object-contain" width={1280} /></div>}
               <div className="flex gap-2 p-2">
                 <button type="button" onClick={() => void downloadItem(active)} className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-ink px-3 py-2 text-[12.5px] font-medium text-white transition hover:bg-brand">
                   {downloadPct[active.id] === undefined ? <Download className="h-3.5 w-3.5" /> : <Loader2 className="h-3.5 w-3.5 animate-spin" />}

@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import Image from "next/image";
 import { Upload, Search, FileText, Film } from "lucide-react";
 import { api, Btn, inputCls, Modal, useToast } from "./ui";
 import { directUpload } from "@/lib/direct-upload-client";
@@ -20,8 +19,32 @@ export type UploadOptions = {
   onCompressed?: (name: string, savedBytes: number) => void;
 };
 
-export function MediaThumb({ m, className }: { m: MediaRow; className?: string }) {
-  if (m.mimeType.startsWith("image/")) return <Image src={m.url} alt={m.alt ?? m.filename} fill sizes="200px" className={cn("!h-full !w-full object-cover", className)} unoptimized />;
+/**
+ * Grid thumbnail. Requests a server-resized WebP (?w=320) rather than the
+ * original — a media page used to pull ~100 MB of full-resolution photos.
+ */
+export function MediaThumb({
+  m,
+  className,
+  width = 320,
+}: {
+  m: MediaRow;
+  className?: string;
+  width?: 160 | 320 | 640 | 1280;
+}) {
+  if (m.mimeType.startsWith("image/")) {
+    const src = m.mimeType === "image/svg+xml" ? m.url : `${m.url}?w=${width}`;
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={src}
+        alt={m.alt ?? m.filename}
+        loading="lazy"
+        decoding="async"
+        className={cn("h-full w-full object-cover", className)}
+      />
+    );
+  }
   if (m.mimeType.startsWith("video/")) return <div className={cn("flex h-full w-full items-center justify-center bg-slate-900 text-white", className)}><Film className="h-6 w-6" /></div>;
   return <div className={cn("flex h-full w-full items-center justify-center bg-slate-100 text-slate-500", className)}><FileText className="h-6 w-6" /></div>;
 }

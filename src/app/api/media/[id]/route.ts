@@ -4,9 +4,13 @@ import { eq } from "drizzle-orm";
 import { db, initDb } from "@/db";
 import { media } from "@/db/schema";
 import { getR2Buffer, r2PublicUrlBase } from "@/lib/r2";
-import { localFilePath, localFileStat } from "@/lib/local-storage";
+import { localFilePath, localFileStat, readLocalFile } from "@/lib/local-storage";
 
 export const runtime = "nodejs";
+
+/** Small per-instance cache for generated thumbnails (bounded, FIFO). */
+const thumbCache = new Map<string, Buffer>();
+const THUMB_CACHE_MAX = 300;
 
 export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }) {
   await initDb();
@@ -24,6 +28,54 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
     "Content-Disposition": `${m.mimeType.startsWith("image/") || m.mimeType.startsWith("video/") || m.mimeType === "application/pdf" ? "inline" : "attachment"}; filename="${(m.originalName || m.filename).replace(/"/g, "")}"`,
   };
   if (m.mimeType === "image/svg+xml") headers["Content-Security-Policy"] = "sandbox; script-src 'none'";
+
+  // Thumbnails: admin grids ask for ?w=320 instead of pulling multi-megabyte
+  // originals for every tile. Resized WebP is cached at the edge for a year.
+  const thumbParam = Number(new URL(req.url).searchParams.get("w") ?? 0);
+  const thumbWidth = [160, 320, 640, 1280].includes(thumbParam) ? thumbParam : 0;
+  if (thumbWidth && m.mimeType.startsWith("image/") && m.mimeType !== "image/svg+xml") {
+    let source: Buffer | null = null;
+    if (m.storage === "local" && m.storageKey) source = await readLocalFile(m.storageKey).catch(() => null);
+    else if (m.storage === "r2" && m.storageKey) source = await getR2Buffer(m.storageKey).catch(() => null);
+    else source = m.data;
+    if (source) {
+      const cacheKey = `${m.id}:${thumbWidth}:${m.storageKey ?? "db"}:${m.size}`;
+      const cached = thumbCache.get(cacheKey);
+      if (cached) {
+        return new Response(new Uint8Array(cached), {
+          headers: {
+            "Content-Type": "image/webp",
+            "Content-Length": String(cached.length),
+            "Cache-Control": "public, max-age=31536000, immutable",
+            "X-Content-Type-Options": "nosniff",
+          },
+        });
+      }
+      try {
+        const sharp = (await import("sharp")).default;
+        const out = await sharp(source, { limitInputPixels: false })
+          .rotate()
+          .resize({ width: thumbWidth, withoutEnlargement: true })
+          .webp({ quality: 80 })
+          .toBuffer();
+        if (thumbCache.size >= THUMB_CACHE_MAX) {
+          const oldest = thumbCache.keys().next().value;
+          if (oldest) thumbCache.delete(oldest);
+        }
+        thumbCache.set(cacheKey, out);
+        return new Response(new Uint8Array(out), {
+          headers: {
+            "Content-Type": "image/webp",
+            "Content-Length": String(out.length),
+            "Cache-Control": "public, max-age=31536000, immutable",
+            "X-Content-Type-Options": "nosniff",
+          },
+        });
+      } catch {
+        // Fall through to the original bytes if sharp cannot decode it.
+      }
+    }
+  }
 
   // Development disk storage. Range support keeps <video> seeking working.
   if (m.storage === "local" && m.storageKey) {

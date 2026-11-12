@@ -8,6 +8,7 @@ import { cn, formatDateTime } from "@/lib/utils";
 import { directUpload } from "@/lib/direct-upload-client";
 import { BROCHURE_MAX_BYTES, BROCHURE_MAX_LABEL } from "@/lib/upload-limits";
 import { api, Badge, Btn, Confirm, inputCls, useToast } from "./ui";
+import { MediaPicker, type MediaRow } from "./MediaPicker";
 
 type Row = {
   id: number;
@@ -43,6 +44,7 @@ export function BrochuresManager({ canWrite, projects }: { canWrite: boolean; pr
   const [deleteRow, setDeleteRow] = useState<Row | null>(null);
   const [previewRow, setPreviewRow] = useState<Row | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const [mediaPicker, setMediaPicker] = useState(false);
   const newProjectRef = useRef<HTMLSelectElement>(null);
   /** Live upload state: pct is null on the legacy path (no byte events). */
   const [progress, setProgress] = useState<{ name: string; pct: number | null; total: number } | null>(null);
@@ -73,6 +75,29 @@ export function BrochuresManager({ canWrite, projects }: { canWrite: boolean; pr
     }
   };
   useEffect(() => deferInitialLoad(load), []);
+
+  /** Attach a PDF that already lives in the media library (no re-upload by hand). */
+  const attachFromMedia = async (m: MediaRow) => {
+    setMediaPicker(false);
+    const pid = Number(uploadProjectId);
+    if (!Number.isInteger(pid) || pid <= 0) {
+      toast("Select a project first", "error");
+      return;
+    }
+    try {
+      const res = await fetch(m.url, { credentials: "same-origin" });
+      if (!res.ok) throw new Error(`Could not read that media file (HTTP ${res.status})`);
+      const blob = await res.blob();
+      if (blob.size > BROCHURE_MAX_BYTES) {
+        toast(`File is ${fmtSize(blob.size)} — the maximum is ${BROCHURE_MAX_LABEL}`, "error");
+        return;
+      }
+      const name = /\.pdf$/i.test(m.originalName) ? m.originalName : `${m.originalName}.pdf`;
+      void upload(pid, new File([blob], name, { type: "application/pdf" }));
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Could not use that media file", "error");
+    }
+  };
 
   /* Upload: presigned direct-to-R2 (falls back to the legacy multipart POST
    when R2 is off). On failure the previous brochure stays untouched. */
@@ -226,7 +251,7 @@ export function BrochuresManager({ canWrite, projects }: { canWrite: boolean; pr
               ref={fileRef}
               type="file"
               accept="application/pdf"
-              className="text-[13px]"
+              className="hidden"
               onChange={(e) => {
                 const f = e.target.files?.[0];
                 e.target.value = "";
@@ -244,6 +269,12 @@ export function BrochuresManager({ canWrite, projects }: { canWrite: boolean; pr
               }}
               disabled={!uploadProjectId}
             />
+            <Btn variant="secondary" disabled={!uploadProjectId} onClick={() => setMediaPicker(true)}>
+              Choose from media
+            </Btn>
+            <Btn disabled={!uploadProjectId} onClick={() => fileRef.current?.click()}>
+              Upload from computer
+            </Btn>
           </div>
           {/* Live upload progress — real percentages and MBs flow from the
               browser's presigned-PUT XHR events; the legacy DB-storage path
@@ -401,6 +432,8 @@ export function BrochuresManager({ canWrite, projects }: { canWrite: boolean; pr
           }}
         />
       )}
+
+      <MediaPicker open={mediaPicker} onClose={() => setMediaPicker(false)} onSelect={(m) => void attachFromMedia(m)} accept="document" />
     </div>
   );
 }
