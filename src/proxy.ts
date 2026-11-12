@@ -80,5 +80,8 @@ export function proxy(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|textures/|images/|brand/).*)"],
+  // The local disk upload streams a raw body; if the proxy buffered it, Next's
+  // proxyClientMaxBodySize (64 MB) would silently truncate large videos. Auth
+  // is enforced inside the route, so it is safe to skip the proxy here.
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|textures/|images/|brand/|api/admin/media/local-upload).*)"],
 };

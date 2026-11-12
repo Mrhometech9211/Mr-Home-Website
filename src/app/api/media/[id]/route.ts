@@ -1,9 +1,14 @@
+import { createReadStream } from "node:fs";
+import { Readable } from "node:stream";
 import { eq } from "drizzle-orm";
 import { db, initDb } from "@/db";
 import { media } from "@/db/schema";
 import { getR2Buffer, r2PublicUrlBase } from "@/lib/r2";
+import { localFilePath, localFileStat } from "@/lib/local-storage";
 
-export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
+export const runtime = "nodejs";
+
+export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }) {
   await initDb();
   const { id } = await ctx.params;
   const numeric = parseInt(id, 10);
@@ -19,6 +24,31 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     "Content-Disposition": `${m.mimeType.startsWith("image/") || m.mimeType.startsWith("video/") || m.mimeType === "application/pdf" ? "inline" : "attachment"}; filename="${(m.originalName || m.filename).replace(/"/g, "")}"`,
   };
   if (m.mimeType === "image/svg+xml") headers["Content-Security-Policy"] = "sandbox; script-src 'none'";
+
+  // Development disk storage. Range support keeps <video> seeking working.
+  if (m.storage === "local" && m.storageKey) {
+    const stat = await localFileStat(m.storageKey);
+    if (!stat) return new Response("Not found", { status: 404 });
+    const range = req.headers.get("range");
+    let start = 0;
+    let end = stat.size - 1;
+    let status = 200;
+    if (range) {
+      const match = /bytes=(\d*)-(\d*)/.exec(range);
+      if (match) {
+        start = match[1] ? Number(match[1]) : 0;
+        end = match[2] ? Math.min(Number(match[2]), stat.size - 1) : stat.size - 1;
+        if (start > end || start >= stat.size) return new Response(null, { status: 416, headers: { "Content-Range": `bytes */${stat.size}` } });
+        status = 206;
+      }
+    }
+    headers["Accept-Ranges"] = "bytes";
+    headers["Content-Length"] = String(end - start + 1);
+    headers["Cache-Control"] = "private, max-age=0";
+    if (status === 206) headers["Content-Range"] = `bytes ${start}-${end}/${stat.size}`;
+    const stream = createReadStream(localFilePath(m.storageKey), { start, end });
+    return new Response(Readable.toWeb(stream) as ReadableStream, { status, headers });
+  }
 
   // Public delivery — R2 objects first, legacy bytea rows fall through.
   if (m.storage === "r2" && m.storageKey) {

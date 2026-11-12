@@ -15,6 +15,7 @@ const bodySchema = z.object({
   filename: z.string().min(1).max(300),
   contentType: z.string().min(1).max(120),
   size: z.number().int().positive().max(5 * 1024 * 1024 * 1024),
+  folderId: z.number().int().positive().nullable().optional(),
 });
 
 export const POST = handle(async (req) => {

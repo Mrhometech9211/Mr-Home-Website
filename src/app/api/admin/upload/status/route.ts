@@ -19,7 +19,8 @@ export const GET = handle(async (req) => {
   return json({
     data: {
       r2,
-      mode: r2 ? "r2" : "legacy-db",
+      // Development without R2 streams to local disk instead of the 4 MB DB path.
+      mode: r2 ? "r2" : process.env.NODE_ENV !== "production" ? "local" : "legacy-db",
       publicDelivery: !!r2PublicUrlBase(),
       note: r2
         ? "Uploads transfer directly to R2 with presigned URLs (bypass the Vercel 4.5 MB body limit)."

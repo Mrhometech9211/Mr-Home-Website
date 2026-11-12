@@ -1,14 +1,17 @@
 import { BROCHURE_MAX_BYTES } from "@/lib/upload-limits";
 
 export const ALLOWED: Record<string, { ext: string[]; kind: "image" | "video" | "document"; max: number }> = {
-  "image/jpeg": { ext: ["jpg", "jpeg"], kind: "image", max: 10 * 1024 * 1024 },
-  "image/png": { ext: ["png"], kind: "image", max: 10 * 1024 * 1024 },
-  "image/webp": { ext: ["webp"], kind: "image", max: 10 * 1024 * 1024 },
-  "image/avif": { ext: ["avif"], kind: "image", max: 10 * 1024 * 1024 },
-  "image/gif": { ext: ["gif"], kind: "image", max: 8 * 1024 * 1024 },
-  "image/svg+xml": { ext: ["svg"], kind: "image", max: 1 * 1024 * 1024 },
-  "video/mp4": { ext: ["mp4", "m4v"], kind: "video", max: 80 * 1024 * 1024 },
-  "video/webm": { ext: ["webm"], kind: "video", max: 80 * 1024 * 1024 },
+  // Ceilings are policy limits, not serverless body limits: media uploads go
+  // browser → R2 directly, so a single PUT can carry up to 5 GiB.
+  "image/jpeg": { ext: ["jpg", "jpeg"], kind: "image", max: 50 * 1024 * 1024 },
+  "image/png": { ext: ["png"], kind: "image", max: 50 * 1024 * 1024 },
+  "image/webp": { ext: ["webp"], kind: "image", max: 50 * 1024 * 1024 },
+  "image/avif": { ext: ["avif"], kind: "image", max: 50 * 1024 * 1024 },
+  "image/gif": { ext: ["gif"], kind: "image", max: 25 * 1024 * 1024 },
+  "image/svg+xml": { ext: ["svg"], kind: "image", max: 2 * 1024 * 1024 },
+  "video/mp4": { ext: ["mp4", "m4v"], kind: "video", max: 2 * 1024 * 1024 * 1024 },
+  "video/webm": { ext: ["webm"], kind: "video", max: 2 * 1024 * 1024 * 1024 },
+  "video/quicktime": { ext: ["mov"], kind: "video", max: 2 * 1024 * 1024 * 1024 },
   // Brochures are PDFs and share this ceiling; both upload through R2 direct.
   "application/pdf": { ext: ["pdf"], kind: "document", max: BROCHURE_MAX_BYTES },
   // Inventory documents for the Sales Offer Generator. Served as downloads,

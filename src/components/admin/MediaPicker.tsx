@@ -5,9 +5,20 @@ import Image from "next/image";
 import { Upload, Search, FileText, Film } from "lucide-react";
 import { api, Btn, inputCls, Modal, useToast } from "./ui";
 import { directUpload } from "@/lib/direct-upload-client";
+import { compressImage } from "@/lib/image-compress";
 import { cn } from "@/lib/utils";
 
-export type MediaRow = { id: number; url: string; filename: string; originalName: string; mimeType: string; kind: string; size: number; width: number | null; height: number | null; alt: string | null; caption: string | null; createdAt: string };
+export type MediaRow = { id: number; url: string; filename: string; originalName: string; mimeType: string; kind: string; size: number; width: number | null; height: number | null; alt: string | null; caption: string | null; folderId?: number | null; createdAt: string };
+
+export type UploadOptions = {
+  /** Folder to drop the new file into; null = library root. */
+  folderId?: number | null;
+  onProgress?: (name: string, pct: number | null) => void;
+  onError?: (name: string, message: string) => void;
+  /** Re-encode images in the browser before upload (default on). */
+  compressImages?: boolean;
+  onCompressed?: (name: string, savedBytes: number) => void;
+};
 
 export function MediaThumb({ m, className }: { m: MediaRow; className?: string }) {
   if (m.mimeType.startsWith("image/")) return <Image src={m.url} alt={m.alt ?? m.filename} fill sizes="200px" className={cn("!h-full !w-full object-cover", className)} unoptimized />;
@@ -18,7 +29,7 @@ export function MediaThumb({ m, className }: { m: MediaRow; className?: string }
 export function useMediaUpload() {
   const { toast } = useToast();
   const [uploading, setUploading] = useState(false);
-  const upload = useCallback(async (files: FileList | File[], _extra?: Record<string, string>) => {
+  const upload = useCallback(async (files: FileList | File[], opts: UploadOptions = {}) => {
     setUploading(true);
     const done: MediaRow[] = [];
     for (const f of Array.from(files)) {
@@ -26,12 +37,25 @@ export function useMediaUpload() {
         // Direct-to-R2 presigned upload (bypasses server body limits);
         // the helper transparently falls back to the legacy multipart
         // storing the file in Postgres when R2 is not configured.
-        const { id } = await directUpload("media", f);
+        let payload = f;
+        if (opts.compressImages !== false) {
+          const { file: compressed, savedBytes } = await compressImage(f);
+          payload = compressed;
+          if (savedBytes > 0) opts.onCompressed?.(f.name, savedBytes);
+        }
+        const { id } = await directUpload("media", payload, {
+          folderId: opts.folderId ?? null,
+          onProgress: (pct) => opts.onProgress?.(f.name, pct),
+        });
         if (id) {
-          const d = await api<{ data: MediaRow }>(`/api/admin/media/${id}`);
+          const d = await api<{ data: MediaRow }>(`/api/admin/media/${id}?t=${Date.now()}`);
           done.push(d.data);
         }
-      } catch (e) { toast(`${f.name}: ${e instanceof Error ? e.message : "upload failed"}`, "error"); }
+      } catch (e) {
+        const message = e instanceof Error ? e.message : "upload failed";
+        opts.onError?.(f.name, message);
+        toast(`${f.name}: ${message}`, "error");
+      }
     }
     setUploading(false);
     if (done.length) toast(`${done.length} file(s) uploaded`);

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { eq, ilike, or, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { media, pageSections, projects, markets, siteSettings, testimonials, seoEntries } from "@/db/schema";
+import { media, mediaFolders, pageSections, projects, markets, siteSettings, testimonials, seoEntries } from "@/db/schema";
 import { ApiError, getIp, handle, json, readJson } from "@/lib/api";
 import { requireUser } from "@/lib/auth";
 import { audit } from "@/lib/audit";
@@ -36,12 +36,16 @@ export const GET = handle<Ctx>(async (_req, ctx) => {
   return json({ data: { ...row, url: `/api/media/${row.id}` }, usage: await usage(id) });
 });
 
-const patchSchema = z.object({ alt: z.string().max(300).nullable().optional(), caption: z.string().max(500).nullable().optional(), kind: z.enum(["image", "video", "document", "logo"]).optional(), filename: z.string().max(200).optional() });
+const patchSchema = z.object({ alt: z.string().max(300).nullable().optional(), caption: z.string().max(500).nullable().optional(), kind: z.enum(["image", "video", "document", "logo"]).optional(), filename: z.string().max(200).optional(), originalName: z.string().min(1).max(200).optional(), folderId: z.number().int().positive().nullable().optional() });
 
 export const PATCH = handle<Ctx>(async (req, ctx) => {
   const me = await requireUser("media.write");
   const id = await idOf(ctx);
   const data = patchSchema.parse(await readJson(req));
+  if (data.folderId != null) {
+    const [folder] = await db.select({ id: mediaFolders.id }).from(mediaFolders).where(eq(mediaFolders.id, data.folderId)).limit(1);
+    if (!folder) throw new ApiError(400, "Folder not found");
+  }
   const [row] = await db.update(media).set(data).where(eq(media.id, id)).returning({ id: media.id });
   if (!row) throw new ApiError(404, "Not found");
   await audit({ user: me, action: "media.updated", entity: "media", entityId: id, metadata: data, ip: getIp(req) });
@@ -83,6 +87,10 @@ export const DELETE = handle<Ctx>(async (req, ctx) => {
     // The DB row is gone — do not orphan the object in the bucket.
     const { deleteR2Object } = await import("@/lib/r2");
     await deleteR2Object(row.storageKey);
+  }
+  if (row.storage === "local" && row.storageKey) {
+    const { deleteLocalFile } = await import("@/lib/local-storage");
+    await deleteLocalFile(row.storageKey);
   }
   await audit({ user: me, action: "media.deleted", entity: "media", entityId: id, metadata: { filename: row.filename, forced: force }, ip: getIp(req) });
   return json({ ok: true });

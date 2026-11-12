@@ -28,19 +28,43 @@ export type UploadProgress = { loadedPct: number | null };
 /** Conservative ceiling for the legacy in-band upload path (Vercel ~4.5 MB). */
 const IN_BAND_MAX = 4 * 1024 * 1024;
 
-let r2ModePromise: Promise<"r2" | "legacy" | "unknown"> | null = null;
+let r2ModePromise: Promise<"r2" | "local" | "legacy" | "unknown"> | null = null;
 
-async function r2Mode(): Promise<"r2" | "legacy" | "unknown"> {
+async function r2Mode(): Promise<"r2" | "local" | "legacy" | "unknown"> {
   if (!r2ModePromise) {
     r2ModePromise = fetch("/api/admin/upload/status", { credentials: "same-origin" })
       .then(async (r) => {
         if (!r.ok) return "unknown" as const;
         const d = (await r.json().catch(() => null)) as { data?: { mode?: string } } | null;
-        return d?.data?.mode === "r2" ? ("r2" as const) : ("legacy" as const);
+        if (d?.data?.mode === "r2") return "r2" as const;
+        if (d?.data?.mode === "local") return "local" as const;
+        return "legacy" as const;
       })
       .catch(() => "unknown" as const);
   }
   return r2ModePromise;
+}
+
+/** Development: stream the file to the local disk endpoint with real progress. */
+function localUpload(file: File, folderId: number | null, onProgress?: (pct: number) => void): Promise<{ id: number }> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "/api/admin/media/local-upload");
+    xhr.setRequestHeader("x-file-name", encodeURIComponent(file.name));
+    xhr.setRequestHeader("x-file-type", file.type || "application/octet-stream");
+    xhr.setRequestHeader("x-size", String(file.size));
+    xhr.setRequestHeader("x-folder-id", folderId ? String(folderId) : "");
+    xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress?.(Math.round((e.loaded / e.total) * 100)); };
+    xhr.onload = () => {
+      const body = (() => { try { return JSON.parse(xhr.responseText) as { data?: { id?: number }; error?: string }; } catch { return null; } })();
+      if (xhr.status >= 200 && xhr.status < 300 && body?.data?.id) resolve({ id: body.data.id });
+      else reject(new Error(body?.error || `Upload failed (HTTP ${xhr.status})`));
+    };
+    xhr.onerror = () => reject(new Error("Network error while uploading"));
+    xhr.ontimeout = () => reject(new Error("Upload timed out"));
+    xhr.timeout = 30 * 60 * 1000;
+    xhr.send(file);
+  });
 }
 
 /** PUT a single blob to a presigned URL with progress reporting. */
@@ -115,10 +139,16 @@ async function cancelUpload(base: string, id: number, uploadId?: string): Promis
 export async function directUpload(
   kind: "media" | "brochure",
   file: File,
-  opts: { projectId?: number; allowDownload?: boolean; initialUrl?: File | null; onProgress?: (pct: number | null) => void } = {},
+  opts: { projectId?: number; allowDownload?: boolean; initialUrl?: File | null; folderId?: number | null; onProgress?: (pct: number | null) => void } = {},
 ): Promise<{ id: number }> {
   const base = kind === "media" ? "/api/admin/media/upload" : "/api/admin/brochures/upload";
   const mode = await r2Mode();
+
+  if (mode === "local") {
+    const { id } = await localUpload(file, opts.folderId ?? null, (p) => opts.onProgress?.(Math.min(99, p)));
+    opts.onProgress?.(100);
+    return { id };
+  }
 
   if (mode !== "legacy") {
     let initRes: Response;
@@ -128,7 +158,7 @@ export async function directUpload(
         headers: { "Content-Type": "application/json" },
         credentials: "same-origin",
         body: JSON.stringify({
-          ...(kind === "brochure" ? { projectId: opts.projectId, allowDownload: opts.allowDownload ?? true } : {}),
+          ...(kind === "brochure" ? { projectId: opts.projectId, allowDownload: opts.allowDownload ?? true } : { folderId: opts.folderId ?? null }),
           filename: file.name,
           contentType: file.type || "application/octet-stream",
           size: file.size,

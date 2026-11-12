@@ -1,12 +1,12 @@
-import { and, asc, desc, eq, ilike, ne, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, isNull, ne, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
-import { media } from "@/db/schema";
+import { media, mediaFolders } from "@/db/schema";
 import { ApiError, getIp, handle, json, parseIntParam } from "@/lib/api";
 import { requireUser } from "@/lib/auth";
 import { audit } from "@/lib/audit";
 import { safeFilename, validateUpload } from "@/lib/media-validation";
 
-const listCols = { id: media.id, filename: media.filename, originalName: media.originalName, mimeType: media.mimeType, kind: media.kind, size: media.size, width: media.width, height: media.height, alt: media.alt, caption: media.caption, uploadedBy: media.uploadedBy, createdAt: media.createdAt };
+const listCols = { id: media.id, filename: media.filename, originalName: media.originalName, mimeType: media.mimeType, kind: media.kind, size: media.size, width: media.width, height: media.height, alt: media.alt, caption: media.caption, folderId: media.folderId, uploadedBy: media.uploadedBy, createdAt: media.createdAt };
 
 export const GET = handle(async (req) => {
   await requireUser("media.read");
@@ -22,6 +22,15 @@ export const GET = handle(async (req) => {
   if (kind) conds.push(eq(media.kind, kind));
   // Never list `pending` upload sessions — their object is not yet verified in R2.
   conds.push(ne(media.status, "pending"));
+  // Folder-scoped browsing. Absent → every file (used by search and the picker).
+  const folderParam = url.searchParams.get("folder");
+  if (folderParam !== null) {
+    if (folderParam === "root") conds.push(isNull(media.folderId));
+    else {
+      const folderId = Number(folderParam);
+      if (Number.isInteger(folderId) && folderId > 0) conds.push(eq(media.folderId, folderId));
+    }
+  }
   const where = conds.length ? and(...conds) : undefined;
   const sortCol = sort === "size" ? media.size : sort === "filename" ? media.filename : media.createdAt;
   const [{ count }] = await db.select({ count: sql<number>`count(*)::int` }).from(media).where(where);
@@ -40,12 +49,21 @@ export const POST = handle(async (req) => {
   if (!v.ok) throw new ApiError(400, v.error);
   const kindOverride = form.get("kind");
   const kind = kindOverride === "logo" && v.kind === "image" ? "logo" : v.kind;
+  const folderRaw = form.get("folderId");
+  let folderId: number | null = null;
+  if (folderRaw !== null && String(folderRaw) !== "") {
+    const candidate = Number(folderRaw);
+    if (!Number.isInteger(candidate) || candidate <= 0) throw new ApiError(400, "Invalid folder");
+    const [folder] = await db.select({ id: mediaFolders.id }).from(mediaFolders).where(eq(mediaFolders.id, candidate)).limit(1);
+    if (!folder) throw new ApiError(400, "Destination folder not found");
+    folderId = folder.id;
+  }
   const filename = `${Date.now().toString(36)}-${safeFilename(file.name)}`;
   const [row] = await db.insert(media).values({
     filename, originalName: file.name.slice(0, 200), mimeType: file.type, kind, size: file.size,
     width: v.dims?.width ?? null, height: v.dims?.height ?? null,
     alt: String(form.get("alt") ?? "").slice(0, 300) || null, caption: String(form.get("caption") ?? "").slice(0, 500) || null,
-    data: buf, uploadedBy: me.id,
+    folderId, data: buf, uploadedBy: me.id,
   }).returning(listCols);
   await audit({ user: me, action: "media.uploaded", entity: "media", entityId: row.id, metadata: { filename, size: file.size, mimeType: file.type }, ip: getIp(req) });
   return json({ data: { ...row, url: `/api/media/${row.id}` } }, { status: 201 });

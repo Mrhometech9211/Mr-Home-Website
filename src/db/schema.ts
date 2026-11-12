@@ -9,6 +9,7 @@ import {
   doublePrecision,
   numeric,
   index,
+  uniqueIndex,
   customType,
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
@@ -241,6 +242,33 @@ export const projects = pgTable(
   ],
 );
 
+export const integrationTokens = pgTable(
+  "integration_tokens",
+  {
+    id: serial("id").primaryKey(),
+    provider: text("provider").notNull(),
+    accountEmail: text("account_email"),
+    accessToken: text("access_token").notNull(),
+    refreshToken: text("refresh_token"),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("integration_tokens_provider_idx").on(t.provider)],
+);
+
+export const mediaFolders = pgTable(
+  "media_folders",
+  {
+    id: serial("id").primaryKey(),
+    name: text("name").notNull(),
+    parentId: integer("parent_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("media_folders_parent_idx").on(t.parentId)],
+);
+
 export const media = pgTable(
   "media",
   {
@@ -261,10 +289,19 @@ export const media = pgTable(
     storageKey: text("storage_key"),
     /** pending = presigned upload started; ready = key verified in R2. */
     status: text("status").notNull().default("ready"),
+    /** Optional folder in the media library tree; NULL = library root. */
+    folderId: integer("folder_id"),
+    /** Source Google Drive file id, so an import is never duplicated. */
+    driveFileId: text("drive_file_id"),
     uploadedBy: integer("uploaded_by"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("media_kind_idx").on(t.kind), index("media_status_idx").on(t.status)],
+  (t) => [
+    index("media_kind_idx").on(t.kind),
+    index("media_status_idx").on(t.status),
+    // Postgres treats NULLs as distinct, so many un-imported rows coexist.
+    uniqueIndex("media_drive_file_idx").on(t.driveFileId),
+  ],
 );
 
 export const leads = pgTable(

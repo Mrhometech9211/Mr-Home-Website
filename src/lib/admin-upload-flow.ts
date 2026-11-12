@@ -21,7 +21,7 @@ import "server-only";
 
 import { and, eq, lt, desc } from "drizzle-orm";
 import { db } from "@/db";
-import { brochures, media } from "@/db/schema";
+import { brochures, media, mediaFolders } from "@/db/schema";
 import { ApiError } from "@/lib/api";
 import {
   R2_SINGLE_PUT_MAX,
@@ -51,6 +51,8 @@ export type InitRequest = {
   size: number;
   /** Force the multipart protocol regardless of size. */
   multipart?: boolean;
+  /** Media library destination folder; NULL/omitted = library root. */
+  folderId?: number | null;
 };
 
 export type InitResult = {
@@ -117,6 +119,12 @@ export async function initMediaUpload(meId: number, req: InitRequest): Promise<I
   if (!contentType) throw new ApiError(400, "A file content type is required");
   if (!Number.isFinite(size) || size <= 0) throw new ApiError(400, "File size is required");
   const { kind } = validateDeclared(filename, contentType, size);
+  let folderId: number | null = null;
+  if (req.folderId != null) {
+    const [folder] = await db.select({ id: mediaFolders.id }).from(mediaFolders).where(eq(mediaFolders.id, req.folderId)).limit(1);
+    if (!folder) throw new ApiError(400, "Destination folder not found");
+    folderId = folder.id;
+  }
   const key = mediaKey(filename);
   assertSafeKey(key);
   const [row] = await db
@@ -130,6 +138,7 @@ export async function initMediaUpload(meId: number, req: InitRequest): Promise<I
       storage: "r2",
       storageKey: key,
       status: "pending",
+      folderId,
       uploadedBy: meId,
     })
     .returning({ id: media.id });
