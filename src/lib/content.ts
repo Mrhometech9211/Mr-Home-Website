@@ -205,6 +205,16 @@ export const getProjectCountsByMarket = cache(async () => {
   return map;
 });
 
+/** Total published, non-archived projects — the public project-page count. */
+export const getPublishedProjectCount = cache(async (): Promise<number> => {
+  await ensureSeeded();
+  const [row] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(projects)
+    .where(and(eq(projects.published, true), eq(projects.archived, false)));
+  return row?.count ?? 0;
+});
+
 export const getPropertyTypes = cache(async () => {
   await initDb();
   const rows = await db.selectDistinct({ t: projects.propertyType }).from(projects).where(and(eq(projects.published, true), eq(projects.archived, false)));

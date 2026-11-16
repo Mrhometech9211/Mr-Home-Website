@@ -18,6 +18,8 @@ export type HeroProps = {
   secondaryCtaLabel?: string | null;
   secondaryCtaHref?: string | null;
   image: string;
+  marketCount?: number;
+  publishedProjectCount?: number;
 };
 
 function splitTitle(title: string) {
@@ -28,7 +30,7 @@ function splitTitle(title: string) {
   return { lead: parts.join(" "), tail };
 }
 
-export function Hero({ eyebrow, title, body, ctaLabel, ctaHref, secondaryCtaLabel, secondaryCtaHref, image, play, cinematicEntry }: HeroProps & { play: boolean; cinematicEntry: boolean }) {
+export function Hero({ eyebrow, title, body, ctaLabel, ctaHref, secondaryCtaLabel, secondaryCtaHref, image, marketCount, publishedProjectCount, play, cinematicEntry }: HeroProps & { play: boolean; cinematicEntry: boolean }) {
   const root = useRef<HTMLElement>(null);
   const imgWrap = useRef<HTMLDivElement>(null);
   const mx = useMotionValue(0);
@@ -40,6 +42,10 @@ export function Hero({ eyebrow, title, body, ctaLabel, ctaHref, secondaryCtaLabe
   const tx = useTransform(sx, [-1, 1], [-10, 10]);
   const ty = useTransform(sy, [-1, 1], [-8, 8]);
   const { lead, tail } = splitTitle(title);
+  const proofPoints = [
+    marketCount && marketCount > 0 ? `${marketCount} Market Guide${marketCount === 1 ? "" : "s"}` : null,
+    publishedProjectCount && publishedProjectCount > 0 ? `${publishedProjectCount} Published Project${publishedProjectCount === 1 ? "" : "s"}` : null,
+  ].filter(Boolean).join(" · ");
 
   useEffect(() => {
     const el = root.current;
@@ -109,10 +115,12 @@ export function Hero({ eyebrow, title, body, ctaLabel, ctaHref, secondaryCtaLabe
             <div className="pointer-events-none absolute inset-0 rounded-[inherit] ring-1 ring-inset ring-white/40" />
           </motion.div>
           {/* Floating spec chip */}
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={play ? { opacity: 1, y: 0 } : {}} transition={{ delay: 0.9, duration: 0.9, ease: [0.16, 1, 0.3, 1] }} className="glass float-slow absolute -bottom-5 left-4 hidden rounded-2xl px-5 py-4 shadow-card sm:block lg:-left-6">
-            <div className="text-[11px] uppercase tracking-[0.18em] text-mist">Curated Portfolio</div>
-            <div className="mt-1 text-[15px] font-semibold text-ink">10 Markets · 4 Continents</div>
-          </motion.div>
+          {proofPoints && (
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={play ? { opacity: 1, y: 0 } : {}} transition={{ delay: 0.9, duration: 0.9, ease: [0.16, 1, 0.3, 1] }} className="glass float-slow absolute -bottom-5 left-4 hidden rounded-2xl px-5 py-4 shadow-card sm:block lg:-left-6">
+              <div className="text-[11px] uppercase tracking-[0.18em] text-mist">Curated Portfolio</div>
+              <div className="mt-1 text-[15px] font-semibold text-ink">{proofPoints}</div>
+            </motion.div>
+          )}
         </div>
       </div>
 

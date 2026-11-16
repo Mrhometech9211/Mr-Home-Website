@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { getProjectCountsByMarket, getPublishedMarketCities, getPublishedMarkets, getPublishedProjects, getSections, getSettings } from "@/lib/content";
+import { getProjectCountsByMarket, getPublishedMarketCities, getPublishedMarkets, getPublishedProjectCount, getPublishedProjects, getSections, getSettings } from "@/lib/content";
 import { buildMetadata } from "@/lib/seo";
 import { HomeStage } from "@/components/home/HomeStage";
 import { StatsBar } from "@/components/home/StatsBar";
@@ -19,13 +19,14 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function HomePage() {
-  const [settings, sections, markets, projects, counts, marketCitiesMap] = await Promise.all([
+  const [settings, sections, markets, projects, counts, marketCitiesMap, publishedProjectCount] = await Promise.all([
     getSettings(),
     getSections("home"),
     getPublishedMarkets(),
     getPublishedProjects({ limit: 12 }),
     getProjectCountsByMarket(),
     getPublishedMarketCities(),
+    getPublishedProjectCount(),
   ]);
   const byKey = Object.fromEntries(sections.map((s) => [s.key, s]));
   const stats = byKey.stats?.items ?? [];
@@ -61,6 +62,8 @@ export default async function HomePage() {
                 secondaryCtaLabel={sec.secondaryCtaLabel}
                 secondaryCtaHref={sec.secondaryCtaHref}
                 image={sec.image || "/images/hero-villa.jpg"}
+                marketCount={markets.length}
+                publishedProjectCount={publishedProjectCount}
               />
             );
           case "stats":
