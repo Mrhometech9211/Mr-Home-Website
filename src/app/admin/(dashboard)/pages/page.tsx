@@ -9,14 +9,15 @@ import type { BuilderPage } from "@/lib/page-builder";
 
 /** Built-in public pages: they already exist as routes (edited via Content/Settings), listed read-only. */
 const SYSTEM_PAGES = [
-  { title: "Home", slug: "" },
-  { title: "Why Mr.Home", slug: "why-mr-home" },
-  { title: "Projects", slug: "projects" },
-  { title: "Buy", slug: "buy" },
-  { title: "Rent", slug: "rent" },
-  { title: "News", slug: "news" },
-  { title: "Contact", slug: "contact" },
-  { title: "List Your Property", slug: "list-your-property" },
+  { title: "Home", key: "home" },
+  { title: "Why Mr.Home", key: "why-mr-home" },
+  { title: "Projects", key: "projects" },
+  { title: "Buy", key: "buy" },
+  { title: "Rent", key: "rent" },
+  { title: "Markets", key: "markets" },
+  { title: "News", key: "news" },
+  { title: "Contact", key: "contact" },
+  { title: "List Your Property", key: "list-your-property" },
 ];
 
 type PageRow = {
@@ -98,14 +99,12 @@ export default function PagesAdminPage() {
 
       <div className="rounded-2xl border border-ink/8 bg-white p-4 shadow-sm">
         <h2 className="text-[13px] font-medium uppercase tracking-wider text-mist">System pages</h2>
-        <p className="mt-1 text-[12.5px] text-mist">Built-in site pages — edited from their own sections, not the page builder.</p>
+        <p className="mt-1 text-[12.5px] text-mist">Built-in site pages — edit their content, SEO and social metadata with a draft/preview/publish flow.</p>
         <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
           {SYSTEM_PAGES.map((pg) => (
             <a
-              key={pg.slug}
-              href={pg.slug === "/" ? "/" : `/${pg.slug}`}
-              target="_blank"
-              rel="noopener noreferrer"
+              key={pg.key}
+              href={`/admin/site-pages/${pg.key}`}
               className="flex items-center justify-between rounded-xl border border-ink/8 bg-slate-50 px-3.5 py-2.5 text-[13px] text-ink transition hover:border-brand/40 hover:bg-white"
             >
               <span className="flex items-center gap-2"><Globe className="h-3.5 w-3.5 text-mist" /> {pg.title}</span>

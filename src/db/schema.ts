@@ -215,6 +215,17 @@ export const projects = pgTable(
     areaUnit: text("area_unit"),
     handover: text("handover"),
     status: text("status").notNull().default("available"),
+    /** Provenance for the commercial facts above — all optional, never inferred. */
+    priceCheckedAt: timestamp("price_checked_at", { withTimezone: true }),
+    paymentPlan: text("payment_plan"),
+    paymentPlanSource: text("payment_plan_source"),
+    handoverSource: text("handover_source"),
+    developerApproval: text("developer_approval"),
+    projectApproval: text("project_approval"),
+    verificationChecks: jsonb("verification_checks").$type<ProjectVerificationCheck[]>().default([]),
+    verificationSource: text("verification_source"),
+    verificationReviewer: text("verification_reviewer"),
+    verificationCheckedAt: timestamp("verification_checked_at", { withTimezone: true }),
     featured: boolean("featured").notNull().default(false),
     published: boolean("published").notNull().default(false),
     archived: boolean("archived").notNull().default(false),
@@ -241,6 +252,9 @@ export const projects = pgTable(
     index("projects_purpose_idx").on(t.purpose),
   ],
 );
+
+/** Admin-entered provenance for facts shown on a project page (never generated). */
+export type ProjectVerificationCheck = { check: string; status: string; source?: string; reviewer?: string; checkedAt?: string };
 
 export const integrationTokens = pgTable(
   "integration_tokens",
@@ -474,6 +488,10 @@ export const newsArticles = pgTable(
     seoTitle: text("seo_title"),
     seoDescription: text("seo_description"),
     seoKeywords: text("seo_keywords"),
+    /** Named sources cited by the article: { label, url, checkedAt }. */
+    sources: jsonb("sources").$type<{ label: string; url?: string; checkedAt?: string }[]>().default([]),
+    /** Social-share image; falls back to the cover image. */
+    socialImage: text("social_image"),
     /** Visual-builder sections for the article body (draft / published). */
     builderDraft: jsonb("builder_draft").$type<unknown[]>().default([]),
     builderPublished: jsonb("builder_published").$type<unknown[]>().default([]),
@@ -585,6 +603,73 @@ export const seoEntries = pgTable("seo_entries", {
   ogImage: text("og_image"),
   noIndex: boolean("no_index").notNull().default(false),
 });
+
+/** Editable overrides for a built-in page, kept as draft + published snapshots. */
+export type SitePageSeo = {
+  title?: string | null;
+  description?: string | null;
+  ogTitle?: string | null;
+  ogDescription?: string | null;
+  ogImage?: string | null;
+  canonical?: string | null;
+  noIndex?: boolean;
+};
+export type SitePageSectionPatch = {
+  eyebrow?: string | null;
+  title?: string | null;
+  subtitle?: string | null;
+  body?: string | null;
+  ctaLabel?: string | null;
+  ctaHref?: string | null;
+  secondaryCtaLabel?: string | null;
+  secondaryCtaHref?: string | null;
+  image?: string | null;
+  video?: string | null;
+  background?: string | null;
+  items?: SectionItem[];
+  enabled?: boolean;
+  order?: number;
+};
+export type SitePageContent = {
+  /** Keyed by page_sections.id — only fields an admin has explicitly overridden. */
+  sections: Record<string, SitePageSectionPatch>;
+  seo: SitePageSeo;
+};
+
+export const sitePages = pgTable("site_pages", {
+  slug: text("slug").primaryKey(),
+  draft: jsonb("draft").$type<SitePageContent>().notNull().default({ sections: {}, seo: {} }),
+  published: jsonb("published").$type<SitePageContent>().notNull().default({ sections: {}, seo: {} }),
+  publishedAt: timestamp("published_at", { withTimezone: true }),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Admin-entered market comparison metric. Never seeded with invented figures. */
+export const marketMetrics = pgTable(
+  "market_metrics",
+  {
+    id: serial("id").primaryKey(),
+    marketId: integer("market_id").references(() => markets.id, { onDelete: "cascade" }),
+    city: text("city"),
+    metric: text("metric").notNull(),
+    value: numeric("value").notNull(),
+    unit: text("unit"),
+    period: text("period").notNull(),
+    currency: text("currency"),
+    method: text("method"),
+    sourceUrl: text("source_url"),
+    checkedAt: timestamp("checked_at", { withTimezone: true }).notNull(),
+    kind: text("kind").$type<"historical" | "projection">().notNull().default("historical"),
+    assumptions: text("assumptions"),
+    limitations: text("limitations"),
+    published: boolean("published").notNull().default(false),
+    order: integer("order").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("market_metrics_market_idx").on(t.marketId), index("market_metrics_published_idx").on(t.published)],
+);
+export type MarketMetric = typeof marketMetrics.$inferSelect;
 
 /** Phase 10 — Sales Offer Generator. Additive tables; existing CRM untouched. */
 export const projectUnits = pgTable(

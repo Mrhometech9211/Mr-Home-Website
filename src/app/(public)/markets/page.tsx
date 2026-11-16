@@ -2,11 +2,12 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import Image from "next/image";
 import { ArrowUpRight } from "lucide-react";
-import { getProjectCountsByMarket, getPublishedMarkets, getSections } from "@/lib/content";
+import { getProjectCountsByMarket, getPublishedMarketMetrics, getPublishedMarkets, getSections } from "@/lib/content";
 import { buildMetadata } from "@/lib/seo";
 import { EarthSection } from "@/components/home/EarthSection";
 import { Reveal } from "@/components/site/Reveal";
 import { Breadcrumbs } from "@/components/site/Breadcrumbs";
+import { MarketMetricsDashboard } from "@/components/markets/MarketMetricsDashboard";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +16,7 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function MarketsPage() {
-  const [markets, counts, sections] = await Promise.all([getPublishedMarkets(), getProjectCountsByMarket(), getSections("markets")]);
+  const [markets, counts, sections, metrics] = await Promise.all([getPublishedMarkets(), getProjectCountsByMarket(), getSections("markets"), getPublishedMarketMetrics()]);
   const hero = sections.find((s) => s.key === "hero");
   const section = { ...(hero ?? {}), id: 0, page: "markets", key: "earth", eyebrow: hero?.eyebrow ?? "Markets", title: hero?.title ?? "Global Presence, Local Expertise", body: hero?.body ?? null, ctaLabel: "Talk to an Advisor", ctaHref: "/contact", subtitle: null, secondaryCtaLabel: null, secondaryCtaHref: null, image: null, video: null, background: null, items: [], order: 0, enabled: true, updatedAt: new Date() };
 
@@ -45,6 +46,7 @@ export default async function MarketsPage() {
           </Reveal>
         </div>
       </section>
+      <MarketMetricsDashboard metrics={metrics} />
     </>
   );
 }

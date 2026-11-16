@@ -4,7 +4,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getNewsArticleBySlug, getPublishedNews } from "@/lib/content";
 import { buildMetadata } from "@/lib/seo";
-import { SITE_URL, absoluteSiteUrl } from "@/lib/site";
+import { absoluteSiteUrl } from "@/lib/site";
+import { articleJsonLd } from "@/lib/structured-data";
 import { PageHero } from "@/components/site/PageHero";
 import { Markdown } from "@/components/site/Markdown";
 import { PageBuilder } from "@/components/site/PageBuilder";
@@ -22,7 +23,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   return buildMetadata(`/news/${article.slug}`, {
     title: article.seoTitle || article.title,
     description: article.seoDescription || article.excerpt,
-    image: article.coverImage,
+    image: article.socialImage || article.coverImage,
   });
 }
 
@@ -38,25 +39,7 @@ export default async function NewsArticlePage({ params }: { params: Promise<{ sl
   // Published builder sections replace the Markdown body; the header, cover
   // image and related-article rail stay exactly as they are.
   const customSections = safeSections(article.builderPublished);
-  const publishedISO = (article.publishedAt || article.createdAt).toISOString();
-  const jsonLd = {
-    "@context": "https://schema.org",
-    "@type": "NewsArticle",
-    headline: article.title,
-    description: article.excerpt || article.seoDescription || undefined,
-    image: article.coverImage ? [absoluteSiteUrl(article.coverImage)] : undefined,
-    datePublished: publishedISO,
-    dateModified: article.updatedAt.toISOString(),
-    author: article.author ? { "@type": "Organization", name: article.author } : undefined,
-    publisher: {
-      "@type": "Organization",
-      name: "MR.HOME Real Estate",
-      url: SITE_URL,
-    },
-    mainEntityOfPage: { "@type": "WebPage", "@id": absoluteSiteUrl(`/news/${article.slug}`) },
-    articleSection: article.category || undefined,
-    keywords: article.seoKeywords || undefined,
-  };
+  const jsonLd = articleJsonLd(article);
 
   return (
     <>
@@ -124,6 +107,23 @@ export default async function NewsArticlePage({ params }: { params: Promise<{ sl
                 </div>
               )}
             </>
+          )}
+          {(article.sources ?? []).length > 0 && (
+            <section className="mt-10 rounded-2xl border border-ink/8 bg-white p-5" aria-label="Sources">
+              <h2 className="text-[13px] font-semibold uppercase tracking-wider text-charcoal/70">Sources</h2>
+              <ul className="mt-3 space-y-2 text-[13px] text-charcoal/75">
+                {(article.sources ?? []).map((source, i) => (
+                  <li key={i}>
+                    {source.url ? (
+                      <a href={source.url} target="_blank" rel="noopener noreferrer nofollow" className="text-brand underline underline-offset-2">{source.label}</a>
+                    ) : (
+                      <span>{source.label}</span>
+                    )}
+                    {source.checkedAt ? <span className="text-mist"> · checked {source.checkedAt}</span> : null}
+                  </li>
+                ))}
+              </ul>
+            </section>
           )}
           <p className="mt-12 rounded-2xl bg-ivory-deep/70 p-5 text-[13px] text-charcoal/70">
             Looking to invest in {article.marketName || "one of our markets"}?{" "}

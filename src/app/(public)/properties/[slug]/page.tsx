@@ -7,6 +7,7 @@ import { getPropertyBySlug, getPublishedMarkets, getPublishedProperties, getSett
 import { getCurrentUser } from "@/lib/auth";
 import { buildMetadata } from "@/lib/seo";
 import { absoluteSiteUrl } from "@/lib/site";
+import { propertyJsonLd } from "@/lib/structured-data";
 import { buildWhatsAppLink, fillTemplate } from "@/lib/whatsapp";
 import { formatPrice } from "@/lib/utils";
 import { Breadcrumbs, JsonLd } from "@/components/site/Breadcrumbs";
@@ -53,19 +54,7 @@ export default async function PropertyPage({ params }: { params: Params }) {
     { icon: CalendarClock, label: "Availability", value: property.availability },
   ].filter((f) => f.value != null && f.value !== "");
 
-  const ld = {
-    "@context": "https://schema.org",
-    "@type": "RealEstateListing",
-    name: property.title,
-    description: property.shortDescription || property.description || undefined,
-    image: property.coverImage ? absoluteSiteUrl(property.coverImage) : undefined,
-    url: absoluteSiteUrl(`/properties/${property.slug}`),
-    address: { "@type": "PostalAddress", streetAddress: property.address, addressLocality: property.city, addressCountry: property.country },
-    offer: property.price ? { "@type": "Offer", price: property.price, priceCurrency: property.currency, availability: "https://schema.org/InStock" } : undefined,
-    numberOfRooms: property.bedrooms ?? undefined,
-    numberOfBathroomsTotal: property.bathrooms ?? undefined,
-    floorSize: property.areaSqm ? { "@type": "QuantitativeValue", value: Number(property.areaSqm), unitCode: "MTK" } : undefined,
-  };
+  const ld = propertyJsonLd(property);
   const crumbs = [
     { name: "Home", href: "/" },
     { name: isRent ? "Rent" : "Buy", href: isRent ? "/rent" : "/buy" },

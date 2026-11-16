@@ -9,6 +9,7 @@ import { ProjectPricing } from "@/components/site/ProjectPricing";
 import { getCurrentUser } from "@/lib/auth";
 import { buildMetadata } from "@/lib/seo";
 import { absoluteSiteUrl } from "@/lib/site";
+import { projectJsonLd } from "@/lib/structured-data";
 import { buildWhatsAppLink, fillTemplate } from "@/lib/whatsapp";
 import { formatProjectArea, STATUS_LABELS } from "@/lib/utils";
 import { Breadcrumbs, JsonLd } from "@/components/site/Breadcrumbs";
@@ -20,6 +21,7 @@ import { RoiCalculator } from "@/components/site/RoiCalculator";
 import { Gallery } from "./Gallery";
 import { PageBuilder } from "@/components/site/PageBuilder";
 import { safeSections } from "@/lib/page-builder";
+import { ProjectVerification } from "@/components/site/ProjectVerification";
 
 export const dynamic = "force-dynamic";
 
@@ -53,17 +55,7 @@ export default async function ProjectPage({ params }: { params: Params }) {
     { icon: CalendarClock, label: "Handover", value: project.handover },
     { icon: TrendingUp, label: "Est. ROI", value: project.roi },
   ].filter((f) => f.value);
-  const ld = {
-    "@context": "https://schema.org",
-    "@type": "Residence",
-    name: project.name,
-    description: project.shortDescription || project.description,
-    image: project.coverImage ? absoluteSiteUrl(project.coverImage) : undefined,
-    url: absoluteSiteUrl(`/projects/${project.slug}`),
-    address: { "@type": "PostalAddress", streetAddress: project.address, addressLocality: project.city, addressCountry: project.country },
-    geo: project.latitude && project.longitude ? { "@type": "GeoCoordinates", latitude: project.latitude, longitude: project.longitude } : undefined,
-    offers: project.price ? { "@type": "Offer", price: project.price, priceCurrency: project.currency } : undefined,
-  };
+  const ld = projectJsonLd(project);
   const crumbs = [{ name: "Home", href: "/" }, { name: "Projects", href: "/projects" }, ...(project.market ? [{ name: project.market.name, href: `/projects?market=${project.market.slug}` }] : []), { name: project.name, href: `/projects/${project.slug}` }];
   // Once an administrator publishes builder sections they replace the legacy
   // body; projects without a builder configuration render exactly as before.
@@ -135,6 +127,8 @@ export default async function ProjectPage({ params }: { params: Params }) {
           </Reveal>
         </div>
       )}
+
+      <ProjectVerification project={project} />
 
       {customSections.length > 0 && (
         <PageBuilder

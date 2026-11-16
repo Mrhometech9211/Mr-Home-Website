@@ -88,9 +88,11 @@ export function buildPageHref(sp: MarketplaceSearchParams, page: number): string
 type Props = {
   purpose: "sale" | "rent";
   searchParams: MarketplaceSearchParams;
+  /** Editable Buy hero copy. Rent keeps its built-in copy. */
+  hero?: { eyebrow?: string | null; title?: string | null; body?: string | null };
 };
 
-export async function MarketplacePage({ purpose, searchParams }: Props) {
+export async function MarketplacePage({ purpose, searchParams, hero }: Props) {
   const pageRaw = Number(first(searchParams, "page") ?? 1);
   const page = Number.isFinite(pageRaw) && pageRaw >= 1 ? Math.floor(pageRaw) : 1;
   const query = parsePropertyQuery(purpose, searchParams, page);
@@ -120,13 +122,18 @@ export async function MarketplacePage({ purpose, searchParams }: Props) {
   // URL unit values: sqft | sqmt | marla | kanal (sqmt maps to the legacy sqm display).
   const unitRaw = first(searchParams, "unit") ?? "sqft";
   const unit = (unitRaw === "sqmt" ? "sqm" : unitRaw) as "sqm" | "sqft" | "marla" | "kanal";
+  // A present hero section owns its values — an explicit "" must stay blank
+  // rather than falling back. Pages without editable copy keep the defaults.
+  const heroEyebrow = hero ? (hero.eyebrow ?? "") : isRent ? "Rent" : "Buy";
+  const heroTitle = hero ? (hero.title ?? "") : isRent ? "Homes for Rent" : "Properties for Sale";
+  const heroBody = hero ? (hero.body ?? "") : isRent ? "Quality rentals across our global markets — filter by market, price, rooms and area." : "Curated apartments, villas and townhouses across our global markets.";
 
   return (
     <>
       <PageHero
-        eyebrow={isRent ? "Rent" : "Buy"}
-        title={isRent ? "Homes for Rent" : "Properties for Sale"}
-        body={isRent ? "Quality rentals across our global markets — filter by market, price, rooms and area." : "Curated apartments, villas and townhouses across our global markets."}
+        eyebrow={heroEyebrow}
+        title={heroTitle}
+        body={heroBody}
         crumbs={[{ name: "Home", href: "/" }, { name: isRent ? "Rent" : "Buy", href: isRent ? "/rent" : "/buy" }]}
       >
         <Suspense fallback={<div className="skeleton mt-10 h-32 rounded-3xl" />}>

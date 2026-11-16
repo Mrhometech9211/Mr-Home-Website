@@ -7,6 +7,7 @@ import { cities, faqs, legalPages, markets, navigationItems, newsArticles, pageS
 import { ensureSeeded } from "@/db/seed";
 import { mergeSettings, type SiteSettings } from "./settings-types";
 import { AMENITY_GROUPS } from "./amenity-filters";
+import { applyPageOverrides, getBuiltinPage } from "./site-pages";
 
 /** City option for public filters: the record name plus its market (null for free-text project/property cities). */
 export type CityFacet = { name: string; marketId: number | null };
@@ -36,12 +37,36 @@ export const getNavigation = cache(async (location: "header" | "footer") => {
 
 export const getSections = cache(async (page: string) => {
   await ensureSeeded();
-  return db.select().from(pageSections).where(and(eq(pageSections.page, page), eq(pageSections.enabled, true))).orderBy(asc(pageSections.order));
+  const rows = await db.select().from(pageSections).where(eq(pageSections.page, page)).orderBy(asc(pageSections.order));
+  // Built-in pages may carry admin draft/published field overrides. Everything
+  // else keeps the original enabled-only behaviour.
+  if (getBuiltinPage(page)) return applyPageOverrides(page, rows);
+  return rows.filter((row) => row.enabled);
 });
 
 export const getPublishedMarkets = cache(async (): Promise<Market[]> => {
   await ensureSeeded();
   return db.select().from(markets).where(eq(markets.published, true)).orderBy(asc(markets.order), asc(markets.name));
+});
+
+export type MarketMetricWithMarket = import("@/db/schema").MarketMetric & { marketName: string; marketSlug: string; marketFlag: string };
+
+/** Published comparison metrics — only rows an admin has deliberately published. */
+export const getPublishedMarketMetrics = cache(async (): Promise<MarketMetricWithMarket[]> => {
+  await initDb();
+  const { marketMetrics } = await import("@/db/schema");
+  const rows = await db
+    .select({
+      metric: marketMetrics,
+      marketName: markets.name,
+      marketSlug: markets.slug,
+      marketFlag: markets.flag,
+    })
+    .from(marketMetrics)
+    .innerJoin(markets, eq(marketMetrics.marketId, markets.id))
+    .where(and(eq(marketMetrics.published, true), eq(markets.published, true)))
+    .orderBy(asc(marketMetrics.order), asc(markets.order), desc(marketMetrics.checkedAt));
+  return rows.map((r) => ({ ...r.metric, marketName: r.marketName, marketSlug: r.marketSlug, marketFlag: r.marketFlag }));
 });
 
 export const getMarketBySlug = cache(async (slug: string, includeDrafts = false) => {

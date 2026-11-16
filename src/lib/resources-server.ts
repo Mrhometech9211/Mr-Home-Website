@@ -3,13 +3,14 @@ import { z, type ZodTypeAny } from "zod";
 import { getTableColumns, sql } from "drizzle-orm";
 import type { PgTable } from "drizzle-orm/pg-core";
 import { db } from "@/db";
-import { auditLogs, cities, customRoles, faqs, leads, legalPages, markets, navigationItems, newsArticles, newsletterSubscribers, pageSections, projects, seoEntries, testimonials, users, whatsappTemplates } from "@/db/schema";
+import { auditLogs, cities, customRoles, faqs, leads, legalPages, marketMetrics, markets, navigationItems, newsArticles, newsletterSubscribers, pageSections, projects, seoEntries, testimonials, users, whatsappTemplates } from "@/db/schema";
 import { RESOURCES, type FieldDef, type ResourceDef } from "./resources";
 import { slugify } from "./utils";import { effectiveHas, type Permission } from "./permissions";import { ApiError } from "./api";
 
 export const RESOURCE_TABLES: Record<string, PgTable> = {
   projects,
   markets,
+  metrics: marketMetrics,
   cities,
   sections: pageSections,
   navigation: navigationItems,
@@ -146,6 +147,7 @@ export async function resolveCustomRoleName(
 export const PUBLISHABLE_RESOURCES: Record<string, Permission> = {
   projects: "projects.publish",
   markets: "markets.publish",
+  metrics: "markets.publish",
   news: "news.publish",
   cities: "content.publish",
   legal: "content.publish",
