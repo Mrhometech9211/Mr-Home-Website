@@ -241,7 +241,7 @@ export function PropertyFilters(props: Props) {
   };
 
   return (
-    <div className={cn("transition-opacity", pending && "pointer-events-none opacity-60")} role="search" aria-label={`Filter ${isRent ? "rental" : "sale"} properties`}>
+    <div className={cn("transition-opacity", pending && "pointer-events-none opacity-60")} role="search" aria-label={`Filter ${isRent ? "rental" : "sale"} projects and listings`}>
   <h2 className="display mb-5 text-[clamp(2rem,4vw,3rem)] leading-[1.05] tracking-tight text-ink">
     Your home search <span className="italic text-brand-bright">starts here</span>
   </h2>
@@ -249,7 +249,7 @@ export function PropertyFilters(props: Props) {
       {/* Mobile: single wrapping row keeps controls full-width; ≥md uses the inline Provident layout. */}
       <div ref={rootRef} className="relative z-40 flex flex-wrap items-stretch gap-2 max-md:flex-col">
         <form id={searchFormId} onSubmit={(e) => { e.preventDefault(); applySearch(); }} className="relative min-w-[240px] flex-1 md:min-w-[300px]">
-          <label htmlFor={`market-search-${purpose}`} className="sr-only">Search by area, project or community</label>
+          <label htmlFor={`market-search-${purpose}`} className="sr-only">Search projects and individual listings by area, project or community</label>
           <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-mist" />
           <input
             id={`market-search-${purpose}`}
@@ -340,7 +340,7 @@ export function PropertyFilters(props: Props) {
         ), "right")}
 
         {/* Search action — MR.HOME brand button (no Save control, not Provident's colours) */}
-        <button type="button" onClick={applySearch} aria-label="Search properties" className="inline-flex h-12 shrink-0 items-center gap-2 rounded-xl bg-brand px-5 text-[14px] font-semibold text-white shadow-glow transition hover:bg-brand-deep active:scale-[0.98]">
+        <button type="button" onClick={applySearch} aria-label="Search projects and listings" className="inline-flex h-12 shrink-0 items-center gap-2 rounded-xl bg-brand px-5 text-[14px] font-semibold text-white shadow-glow transition hover:bg-brand-deep active:scale-[0.98]">
           <Search className="h-4 w-4" /> Search
         </button>
       </div>

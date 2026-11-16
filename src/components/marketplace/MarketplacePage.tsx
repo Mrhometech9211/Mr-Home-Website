@@ -7,6 +7,7 @@ import { ProjectCard } from "@/components/site/ProjectCard";
 import { PropertyCard } from "./PropertyCard";
 import { PropertyFilters } from "./PropertyFilters";
 import { getPublishedProperties } from "@/lib/content";
+import { isSafeHref, safeHref } from "@/lib/url";
 
 /**
  * A project's bedrooms field is free text ("1–3", "Studio–2", "5 BR").
@@ -89,7 +90,16 @@ type Props = {
   purpose: "sale" | "rent";
   searchParams: MarketplaceSearchParams;
   /** Editable Buy hero copy. Rent keeps its built-in copy. */
-  hero?: { eyebrow?: string | null; title?: string | null; body?: string | null };
+  hero?: {
+    eyebrow?: string | null;
+    title?: string | null;
+    subtitle?: string | null;
+    body?: string | null;
+    ctaLabel?: string | null;
+    ctaHref?: string | null;
+    secondaryCtaLabel?: string | null;
+    secondaryCtaHref?: string | null;
+  };
 };
 
 export async function MarketplacePage({ purpose, searchParams, hero }: Props) {
@@ -126,14 +136,29 @@ export async function MarketplacePage({ purpose, searchParams, hero }: Props) {
   // rather than falling back. Pages without editable copy keep the defaults.
   const heroEyebrow = hero ? (hero.eyebrow ?? "") : isRent ? "Rent" : "Buy";
   const heroTitle = hero ? (hero.title ?? "") : isRent ? "Homes for Rent" : "Properties for Sale";
+  const heroSubtitle = hero ? (hero.subtitle ?? "") : null;
   const heroBody = hero ? (hero.body ?? "") : isRent ? "Quality rentals across our global markets — filter by market, price, rooms and area." : "Curated apartments, villas and townhouses across our global markets.";
+  const hasPrimaryCta = Boolean(hero?.ctaLabel && hero.ctaHref && isSafeHref(hero.ctaHref));
+  const hasSecondaryCta = Boolean(hero?.secondaryCtaLabel && hero.secondaryCtaHref && isSafeHref(hero.secondaryCtaHref));
+  const heroActions = hero && (hasPrimaryCta || hasSecondaryCta) ? (
+    <>
+      {hasPrimaryCta && hero.ctaLabel && hero.ctaHref && (
+        <Button3D href={safeHref(hero.ctaHref)}>{hero.ctaLabel}</Button3D>
+      )}
+      {hasSecondaryCta && hero.secondaryCtaLabel && hero.secondaryCtaHref && (
+        <Button3D href={safeHref(hero.secondaryCtaHref)} variant="secondary">{hero.secondaryCtaLabel}</Button3D>
+      )}
+    </>
+  ) : null;
 
   return (
     <>
       <PageHero
         eyebrow={heroEyebrow}
         title={heroTitle}
+        subtitle={heroSubtitle}
         body={heroBody}
+        actions={heroActions}
         crumbs={[{ name: "Home", href: "/" }, { name: isRent ? "Rent" : "Buy", href: isRent ? "/rent" : "/buy" }]}
       >
         <Suspense fallback={<div className="skeleton mt-10 h-32 rounded-3xl" />}>
@@ -153,10 +178,13 @@ export async function MarketplacePage({ purpose, searchParams, hero }: Props) {
             <div className="mb-14">
               <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
                 <div>
-                  <p className="eyebrow">{isRent ? "For Rent" : "For Sale"}</p>
+                  <p className="eyebrow">
+                    {isRent ? "For Rent" : "For Sale"} · {matchingProjects.length} {matchingProjects.length === 1 ? "project" : "projects"}
+                  </p>
                   <h2 className="display mt-2 text-[clamp(1.5rem,2.8vw,2.1rem)] text-ink">
                     {isRent ? "Projects available to rent" : "Projects for sale"}
                   </h2>
+                  <p className="mt-1.5 text-[12.5px] text-charcoal/55">Developments matched from Projects CMS.</p>
                 </div>
                 <Link
                   href={`/projects${query.market ? `?market=${query.market}` : ""}`}
@@ -174,12 +202,25 @@ export async function MarketplacePage({ purpose, searchParams, hero }: Props) {
           )}
 
           <p className="mb-6 text-[13px] text-charcoal/60">
-            {total === 1 ? "1 listing" : `${total} listings`} found{totalPages > 1 ? ` · page ${page} of ${totalPages}` : ""}
+            {total === 1 ? "1 individual property listing" : `${total} individual property listings`} found
+            {totalPages > 1 ? ` · page ${page} of ${totalPages}` : ""}
           </p>
           {items.length === 0 && matchingProjects.length === 0 ? (
             <div className="rounded-3xl border border-dashed border-ink/15 bg-white/60 p-16 text-center">
-              <h2 className="text-[20px] font-semibold text-ink">No {isRent ? "rentals" : "listings"} match these filters</h2>
+              <h2 className="text-[20px] font-semibold text-ink">No projects or listings match these filters</h2>
               <p className="mt-2 text-[14px] text-charcoal/70">Try widening the price range or clearing filters. Our advisors can also source off-market options.</p>
+              <div className="mt-6 flex justify-center gap-3">
+                <Button3D href={isRent ? "/rent" : "/buy"} variant="secondary">Clear Filters</Button3D>
+                <Button3D href="/contact">Contact an Advisor</Button3D>
+              </div>
+            </div>
+          ) : items.length === 0 ? (
+            <div className="rounded-3xl border border-dashed border-ink/15 bg-white/60 p-10 text-center">
+              <h2 className="text-[18px] font-semibold text-ink">No individual property listings match these filters</h2>
+              <p className="mx-auto mt-2 max-w-xl text-[13.5px] leading-relaxed text-charcoal/70">
+                The {matchingProjects.length} matching {matchingProjects.length === 1 ? "project is" : "projects are"} shown above — they come from Projects CMS.
+                Individual listings are separate and none match the current filters.
+              </p>
               <div className="mt-6 flex justify-center gap-3">
                 <Button3D href={isRent ? "/rent" : "/buy"} variant="secondary">Clear Filters</Button3D>
                 <Button3D href="/contact">Contact an Advisor</Button3D>

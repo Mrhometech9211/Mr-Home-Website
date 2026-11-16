@@ -3,9 +3,21 @@ import { Breadcrumbs, type Crumb } from "./Breadcrumbs";
 import { Reveal } from "./Reveal";
 import { cn } from "@/lib/utils";
 
-type Props = { eyebrow?: string | null; title: string; body?: string | null; image?: string | null; crumbs: Crumb[]; children?: React.ReactNode; dark?: boolean };
+type Props = {
+  eyebrow?: string | null;
+  title: string;
+  /** Optional subheading rendered between the h1 and body copy. */
+  subtitle?: string | null;
+  body?: string | null;
+  image?: string | null;
+  crumbs: Crumb[];
+  /** Optional actions rendered under the copy, above page-specific children. */
+  actions?: React.ReactNode;
+  children?: React.ReactNode;
+  dark?: boolean;
+};
 
-export function PageHero({ eyebrow, title, body, image, crumbs, children, dark }: Props) {
+export function PageHero({ eyebrow, title, subtitle, body, image, crumbs, actions, children, dark }: Props) {
   return (
     <section className={cn("relative pt-32 pb-16 lg:pt-40 lg:pb-20", dark && "bg-space text-white")}>
       {image && (
@@ -22,7 +34,11 @@ export function PageHero({ eyebrow, title, body, image, crumbs, children, dark }
         <Reveal className="mt-8 max-w-3xl">
           {eyebrow && <p className={cn("eyebrow", dark && "!text-brand-bright")}>{eyebrow}</p>}
           <h1 className="display mt-4 text-[clamp(2.4rem,5.5vw,4.4rem)]">{title}</h1>
-          {body && <p className={cn("mt-5 max-w-2xl text-[16px] leading-relaxed", dark ? "text-white/70" : "text-charcoal/80")}>{body}</p>}
+          {subtitle && (
+            <p className={cn("mt-3 text-[17px] font-medium leading-relaxed", dark ? "text-white/85" : "text-charcoal/85")}>{subtitle}</p>
+          )}
+          {body && <p className={cn(subtitle ? "mt-3" : "mt-5", "max-w-2xl text-[16px] leading-relaxed", dark ? "text-white/70" : "text-charcoal/80")}>{body}</p>}
+          {actions && <div className="mt-7 flex flex-wrap items-center gap-3">{actions}</div>}
         </Reveal>
         {children}
       </div>

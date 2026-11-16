@@ -16,7 +16,20 @@ export default async function BuyPage({ searchParams }: { searchParams: Promise<
     <MarketplacePage
       purpose="sale"
       searchParams={sp}
-      hero={hero ? { eyebrow: hero.eyebrow, title: hero.title, body: hero.body } : undefined}
+      hero={
+        hero
+          ? {
+              eyebrow: hero.eyebrow,
+              title: hero.title,
+              subtitle: hero.subtitle,
+              body: hero.body,
+              ctaLabel: hero.ctaLabel,
+              ctaHref: hero.ctaHref,
+              secondaryCtaLabel: hero.secondaryCtaLabel,
+              secondaryCtaHref: hero.secondaryCtaHref,
+            }
+          : undefined
+      }
     />
   );
 }

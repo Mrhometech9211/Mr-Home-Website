@@ -68,6 +68,44 @@ const TEXT_FIELDS: { name: keyof Section; label: string; hint?: string; area?: b
   { name: "video", label: "Video URL" },
 ];
 
+type FieldName = (typeof TEXT_FIELDS)[number]["name"];
+
+/**
+ * Fields the Buy/List Your Property renderers actually paint. Keeping this
+ * list next to the editor prevents controls that save but never appear on the
+ * page. Pages not listed here keep the full generic field set.
+ */
+const PAGE_FIELDS: Record<string, Record<string, FieldName[]>> = {
+  buy: {
+    hero: ["eyebrow", "title", "subtitle", "body", "ctaLabel", "ctaHref", "secondaryCtaLabel", "secondaryCtaHref"],
+  },
+  "list-your-property": {
+    hero: ["eyebrow", "title", "subtitle", "body", "ctaLabel", "ctaHref", "secondaryCtaLabel", "secondaryCtaHref", "image"],
+    benefits: ["title"],
+    steps: ["title"],
+    form: ["title", "body", "ctaLabel", "ctaHref"],
+  },
+};
+
+/** Only these sections render their item cards. */
+const PAGE_ITEM_SECTIONS: Record<string, string[]> = {
+  buy: [],
+  "list-your-property": ["benefits", "steps"],
+};
+
+function fieldsFor(pageKey: string, sectionKey: string) {
+  const pageFields = PAGE_FIELDS[pageKey];
+  if (!pageFields) return TEXT_FIELDS;
+  return (pageFields[sectionKey] ?? [])
+    .map((name) => TEXT_FIELDS.find((f) => f.name === name))
+    .filter((f): f is (typeof TEXT_FIELDS)[number] => Boolean(f));
+}
+
+function showsItems(pageKey: string, sectionKey: string) {
+  const sections = PAGE_ITEM_SECTIONS[pageKey];
+  return sections ? sections.includes(sectionKey) : true;
+}
+
 function stable(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stable).join(",")}]`;
   if (value && typeof value === "object") {
@@ -350,6 +388,8 @@ export function SitePageEditor({ slug }: { slug: string }) {
           const patch = patchFor(row.key);
           const overriddenCount = Object.keys(patch).length;
           const items = (patch.items ?? row.items ?? []) as Item[];
+          const fields = fieldsFor(data.page.key, row.key);
+          const itemFields = showsItems(data.page.key, row.key);
           return (
             <details key={row.key} open={row.key === "hero"} className="rounded-2xl border border-ink/8 bg-white shadow-sm">
               <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-4">
@@ -363,7 +403,7 @@ export function SitePageEditor({ slug }: { slug: string }) {
               </summary>
               <div className="border-t border-ink/6 p-5">
                 <div className="grid gap-4 md:grid-cols-2">
-                  {TEXT_FIELDS.map((f) => {
+                  {fields.map((f) => {
                     const overridden = isOverridden(row.key, f.name);
                     const value = (display(row, f.name) as string | null) ?? "";
                     return (
@@ -388,7 +428,7 @@ export function SitePageEditor({ slug }: { slug: string }) {
                   })}
                 </div>
 
-                <div className="mt-5">
+                {itemFields && <div className="mt-5">
                   <div className="flex items-center justify-between">
                     <div>
                       <label className={labelCls}>Cards / stats / steps ({items.length})</label>
@@ -430,7 +470,7 @@ export function SitePageEditor({ slug }: { slug: string }) {
                     ))}
                     {items.length === 0 && <p className="text-[12px] text-mist">No items — the section renders without a card list.</p>}
                   </div>
-                </div>
+                </div>}
               </div>
             </details>
           );

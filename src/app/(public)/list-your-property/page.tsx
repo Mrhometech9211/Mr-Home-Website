@@ -3,6 +3,9 @@ import { getFaqs, getPublishedMarkets, getSettings } from "@/lib/content";
 import { buildMetadata } from "@/lib/seo";
 import { PageHero } from "@/components/site/PageHero";
 import { Reveal } from "@/components/site/Reveal";
+import { Button3D } from "@/components/ui/Button3D";
+import { isSafeHref, safeHref } from "@/lib/url";
+import { cn } from "@/lib/utils";
 import { Breadcrumbs, JsonLd } from "@/components/site/Breadcrumbs";
 import { ListPropertyForm } from "@/components/list-your-property/ListPropertyForm";
 import { getLypSections } from "@/lib/site-pages";
@@ -24,15 +27,33 @@ export default async function ListYourPropertyPage() {
   const lyp = settings.listYourProperty;
   const heroEyebrow = hero?.eyebrow ?? lyp.eyebrow;
   const heroTitle = hero?.title ?? lyp.title;
+  const heroSubtitle = hero?.subtitle ?? null;
   const heroBody = hero?.body ?? lyp.heroBody;
   const heroImage = hero?.image ?? lyp.heroImage;
+  const heroCtaLabel = hero?.ctaLabel ?? null;
+  const heroCtaHref = hero?.ctaHref ?? null;
+  const heroSecondaryCtaLabel = hero?.secondaryCtaLabel ?? null;
+  const heroSecondaryCtaHref = hero?.secondaryCtaHref ?? null;
   const benefits = (benefitsSection?.items ?? []).map((i) => ({ title: i.title ?? "", body: i.description ?? "" }));
+  const benefitsTitle = benefitsSection?.title ?? "Why list with Mr.Home";
   const steps = (stepsSection?.items ?? []).map((i) => ({ title: i.title ?? "", body: i.description ?? "" }));
-  const stepsTitle = stepsSection?.title || "How listing with us works";
+  const stepsTitle = stepsSection?.title ?? "How listing with us works";
   const formTitle = form?.title ?? lyp.formTitle;
   const formIntro = form?.body ?? lyp.formIntro;
   const formCtaLabel = form?.ctaLabel ?? lyp.formCtaLabel;
   const formCtaHref = form?.ctaHref ?? lyp.formCtaHref;
+  const heroActions =
+    (heroCtaLabel && heroCtaHref && isSafeHref(heroCtaHref)) ||
+    (heroSecondaryCtaLabel && heroSecondaryCtaHref && isSafeHref(heroSecondaryCtaHref)) ? (
+      <>
+        {heroCtaLabel && heroCtaHref && isSafeHref(heroCtaHref) && (
+          <Button3D href={safeHref(heroCtaHref)}>{heroCtaLabel}</Button3D>
+        )}
+        {heroSecondaryCtaLabel && heroSecondaryCtaHref && isSafeHref(heroSecondaryCtaHref) && (
+          <Button3D href={safeHref(heroSecondaryCtaHref)} variant="secondary">{heroSecondaryCtaLabel}</Button3D>
+        )}
+      </>
+    ) : null;
   const ld = {
     "@context": "https://schema.org",
     "@type": "FAQPage",
@@ -45,7 +66,9 @@ export default async function ListYourPropertyPage() {
       <PageHero
         eyebrow={heroEyebrow ?? "For Owners"}
         title={heroTitle ?? "List Your Property with Mr.Home"}
+        subtitle={heroSubtitle}
         body={heroBody ?? "Sell or rent faster with a dedicated advisor, a free market valuation and access to our global buyer network."}
+        actions={heroActions}
         crumbs={[{ name: "Home", href: "/" }, { name: "List Your Property", href: "/list-your-property" }]}
       />
 
@@ -55,8 +78,11 @@ export default async function ListYourPropertyPage() {
         </section>
       )}
 
-      <section className="mx-auto max-w-[1400px] px-4 pb-8 pt-16 sm:px-6" aria-label="Why list with Mr.Home">
-        <Reveal stagger="[data-b]" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <section className="mx-auto max-w-[1400px] px-4 pb-8 pt-16 sm:px-6" aria-label={benefitsTitle || "Why list with Mr.Home"}>
+        {benefitsTitle && (
+          <Reveal><h2 className="display text-[clamp(1.6rem,3vw,2.2rem)] text-ink">{benefitsTitle}</h2></Reveal>
+        )}
+        <Reveal stagger="[data-b]" className={cn("grid gap-4 sm:grid-cols-2 lg:grid-cols-4", benefitsTitle && "mt-8")}>
           {benefits.map((b) => (
             <div key={b.title} data-b className="rounded-[24px] border border-ink/8 bg-white p-6 shadow-card">
               <h2 className="text-[16px] font-semibold tracking-tight text-ink">{b.title}</h2>
@@ -67,7 +93,7 @@ export default async function ListYourPropertyPage() {
       </section>
 
       <section className="mx-auto max-w-[1400px] px-4 py-16 sm:px-6" aria-label="How listing works">
-        <Reveal><h2 className="display text-[clamp(1.6rem,3vw,2.2rem)] text-ink">{stepsTitle}</h2></Reveal>
+        {stepsTitle && <Reveal><h2 className="display text-[clamp(1.6rem,3vw,2.2rem)] text-ink">{stepsTitle}</h2></Reveal>}
         <Reveal stagger="[data-s]" className="mt-8 grid gap-4 md:grid-cols-3 lg:grid-cols-5">
           {steps.map((s) => (
             <div key={s.title} data-s className="rounded-[24px] border border-ink/8 bg-ivory-deep/40 p-6">
@@ -86,8 +112,8 @@ export default async function ListYourPropertyPage() {
               <p className="mt-3 text-[15px] leading-relaxed text-charcoal/80">
                 {formIntro ?? "Submit the details and a listings advisor will contact you within one business day with a free valuation and a proposed plan — no obligation."}
               </p>
-              {formCtaLabel && (formCtaHref) && (
-                <a href={formCtaHref} className="mt-5 inline-block rounded-full bg-brand px-6 py-3 text-[14px] font-semibold text-white shadow-soft transition hover:brightness-110">{formCtaLabel}</a>
+              {formCtaLabel && formCtaHref && isSafeHref(formCtaHref) && (
+                <a href={safeHref(formCtaHref)} className="mt-5 inline-block rounded-full bg-brand px-6 py-3 text-[14px] font-semibold text-white shadow-soft transition hover:brightness-110">{formCtaLabel}</a>
               )}
             </Reveal>
             {settings.phone && (
