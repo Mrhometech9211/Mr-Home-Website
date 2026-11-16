@@ -9,7 +9,7 @@ import { ProjectPricing } from "@/components/site/ProjectPricing";
 import { getCurrentUser } from "@/lib/auth";
 import { buildMetadata } from "@/lib/seo";
 import { absoluteSiteUrl } from "@/lib/site";
-import { projectJsonLd } from "@/lib/structured-data";
+import { projectJsonLd, webPageJsonLd } from "@/lib/structured-data";
 import { buildWhatsAppLink, fillTemplate } from "@/lib/whatsapp";
 import { formatProjectArea, STATUS_LABELS } from "@/lib/utils";
 import { Breadcrumbs, JsonLd } from "@/components/site/Breadcrumbs";
@@ -56,6 +56,12 @@ export default async function ProjectPage({ params }: { params: Params }) {
     { icon: TrendingUp, label: "Est. ROI", value: project.roi },
   ].filter((f) => f.value);
   const ld = projectJsonLd(project);
+  const pageLd = webPageJsonLd({
+    path: `/projects/${project.slug}`,
+    name: project.name,
+    description: project.shortDescription || project.description,
+    mainEntityId: `${absoluteSiteUrl(`/projects/${project.slug}`)}#listing`,
+  });
   const crumbs = [{ name: "Home", href: "/" }, { name: "Projects", href: "/projects" }, ...(project.market ? [{ name: project.market.name, href: `/projects?market=${project.market.slug}` }] : []), { name: project.name, href: `/projects/${project.slug}` }];
   // Once an administrator publishes builder sections they replace the legacy
   // body; projects without a builder configuration render exactly as before.
@@ -64,7 +70,8 @@ export default async function ProjectPage({ params }: { params: Params }) {
   return (
     <article>
       {isPreview && <meta name="robots" content="noindex,nofollow" />}
-      <JsonLd data={ld} />
+      {!isPreview && <JsonLd data={pageLd} />}
+      {!isPreview && <JsonLd data={ld} />}
       {isPreview && <div className="fixed inset-x-0 top-0 z-[60] bg-amber-500 py-1.5 text-center text-[12px] font-semibold text-white">Preview mode — this project is {project.archived ? "archived" : "unpublished"} and not visible to the public. <Link href={`/admin/projects/${project.id}`} className="underline">Edit</Link></div>}
 
       {/* Hero */}

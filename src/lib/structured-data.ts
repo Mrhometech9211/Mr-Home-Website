@@ -12,14 +12,21 @@ export function organizationId() {
   return `${SITE_URL}/#organization`;
 }
 
-export function organizationJsonLd(s: SiteSettings) {
+export function websiteId() {
+  return `${SITE_URL}/#website`;
+}
+
+/** One site-wide business entity. Public pages reference it by @id. */
+export function organizationJsonLd(s: SiteSettings, areaServed: string[] = []) {
   const socials = (s.socialLinks ?? []).map((l) => l.url).filter((u): u is string => !!u);
+  const served = areaServed.map((a) => a.trim()).filter(Boolean);
   return {
     "@context": "https://schema.org",
-    "@type": "Organization",
+    "@type": "RealEstateAgent",
     "@id": organizationId(),
     name: s.brandName,
     url: SITE_URL,
+    ...(s.tagline ? { slogan: s.tagline } : {}),
     ...(s.logo ? { logo: absoluteSiteUrl(s.logo) } : {}),
     ...(s.email ? { email: s.email } : {}),
     ...(s.phone ? { telephone: s.phone } : {}),
@@ -27,6 +34,45 @@ export function organizationJsonLd(s: SiteSettings) {
       ? { address: { "@type": "PostalAddress", streetAddress: s.address } }
       : {}),
     ...(socials.length ? { sameAs: socials } : {}),
+    ...(served.length ? { areaServed: served } : {}),
+  };
+}
+
+/** Site-wide WebSite entity; page templates reference this by @id. */
+export function websiteJsonLd(s: SiteSettings) {
+  return {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    "@id": websiteId(),
+    url: SITE_URL,
+    name: s.brandName,
+    publisher: { "@id": organizationId() },
+  };
+}
+
+/**
+ * Page-level entity used by the homepage, Buy and Contact templates. The
+ * WebPage types describe the existing page; they do not add claims or copy.
+ */
+export function webPageJsonLd(input: {
+  path: string;
+  name: string;
+  description?: string | null;
+  type?: "WebPage" | "CollectionPage" | "ContactPage";
+  mainEntityId?: string;
+}) {
+  const url = absoluteSiteUrl(input.path);
+  const description = input.description?.trim();
+  return {
+    "@context": "https://schema.org",
+    "@type": input.type ?? "WebPage",
+    "@id": `${url}#webpage`,
+    url,
+    name: input.name,
+    ...(description ? { description } : {}),
+    isPartOf: { "@id": websiteId() },
+    about: { "@id": organizationId() },
+    ...(input.mainEntityId ? { mainEntity: { "@id": input.mainEntityId } } : {}),
   };
 }
 
@@ -82,6 +128,7 @@ export function projectJsonLd(p: ProjectWithMarket) {
     "@type": "RealEstateListing",
     "@id": `${url}#listing`,
     url,
+    mainEntityOfPage: { "@type": "WebPage", "@id": `${url}#webpage` },
     name: p.name,
     description: p.shortDescription || p.description || undefined,
     ...(image.length ? { image } : {}),

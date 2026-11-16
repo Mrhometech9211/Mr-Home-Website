@@ -8,6 +8,8 @@ import { EarthSection } from "@/components/home/EarthSection";
 import { ProjectsShowcase } from "@/components/home/ProjectsShowcase";
 import { JourneySection } from "@/components/home/JourneySection";
 import { InquirySection } from "@/components/home/InquirySection";
+import { JsonLd } from "@/components/site/Breadcrumbs";
+import { webPageJsonLd } from "@/lib/structured-data";
 
 export const dynamic = "force-dynamic";
 
@@ -31,9 +33,15 @@ export default async function HomePage() {
   const showcase = (featured.length >= 4 ? featured : projects).slice(0, 8);
   const formMarkets = markets.map((m) => ({ id: m.id, name: m.name, slug: m.slug, flag: m.flag, cities: marketCitiesMap[m.id] }));
   const formProjects = projects.map((p) => ({ id: p.id, name: p.name, marketId: p.marketId }));
+  const pageLd = webPageJsonLd({
+    path: "/",
+    name: settings.seoDefaultTitle,
+    description: settings.seoDefaultDescription,
+  });
 
   return (
     <>
+      <JsonLd data={pageLd} />
       {sections.map((sec) => {
         switch (sec.key) {
           case "hero":

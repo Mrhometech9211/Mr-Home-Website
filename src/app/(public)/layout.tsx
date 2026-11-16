@@ -7,7 +7,7 @@ import { SmoothScroll } from "@/components/site/SmoothScroll";
 import { CookieConsent } from "@/components/site/CookieConsent";
 import { WhatsAppFloat } from "@/components/site/WhatsAppFloat";
 import { JsonLd } from "@/components/site/Breadcrumbs";
-import { SITE_URL, absoluteSiteUrl } from "@/lib/site";
+import { organizationJsonLd, websiteJsonLd } from "@/lib/structured-data";
 
 export default async function PublicLayout({ children }: { children: ReactNode }) {
   const [settings, headerNav, footerNav, markets, builderPages] = await Promise.all([getSettings(), getNavigation("header"), getNavigation("footer"), getPublishedMarkets(), getBuilderNavPages()]);
@@ -22,25 +22,11 @@ export default async function PublicLayout({ children }: { children: ReactNode }
     items.push({ id: bpId, label: p.navLabel || p.title, href: `/${p.slug}` });
   }
   const wa = buildWhatsAppLink(settings.whatsapp, settings.whatsappDefaultMessage);
-  const org = {
-    "@context": "https://schema.org",
-    "@type": "RealEstateAgent",
-    name: settings.brandName,
-    slogan: settings.tagline,
-    telephone: settings.phone,
-    email: settings.email,
-    address: settings.address,
-    "@id": `${SITE_URL}/#organization`,
-    url: SITE_URL,
-    logo: settings.logo ? absoluteSiteUrl(settings.logo) : undefined,
-    image: settings.seoOgImage ? absoluteSiteUrl(settings.seoOgImage) : undefined,
-    sameAs: settings.socialLinks.map((l) => l.url).filter(Boolean),
-    areaServed: markets.map((m) => m.name),
-  };
   return (
     <>
       <SmoothScroll />
-      <JsonLd data={org} />
+      <JsonLd data={organizationJsonLd(settings, markets.map((m) => m.name))} />
+      <JsonLd data={websiteJsonLd(settings)} />
       {settings.announcementEnabled && settings.announcement && (
         <div className="fixed inset-x-0 top-0 z-[55] bg-brand py-1.5 text-center text-[12px] font-medium text-white">{settings.announcement}</div>
       )}

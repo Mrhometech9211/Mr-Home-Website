@@ -7,6 +7,8 @@ import { PageHero } from "@/components/site/PageHero";
 import { InquiryForm } from "@/components/site/InquiryForm";
 import { Reveal } from "@/components/site/Reveal";
 import { SocialIcon } from "@/components/site/Icons";
+import { JsonLd } from "@/components/site/Breadcrumbs";
+import { organizationId, webPageJsonLd } from "@/lib/structured-data";
 
 export const dynamic = "force-dynamic";
 
@@ -22,8 +24,16 @@ export default async function ContactPage({ searchParams }: { searchParams: Prom
   const preProject = sp.project ? projects.find((p) => p.slug === sp.project && p.published && !p.archived) : undefined;
   const hero = sections.find((x) => x.key === "hero");
   const wa = buildWhatsAppLink(s.whatsapp, s.whatsappDefaultMessage);
+  const pageLd = webPageJsonLd({
+    path: "/contact",
+    type: "ContactPage",
+    name: hero?.title || "Let’s Find the Right Property for You",
+    description: hero?.body,
+    mainEntityId: organizationId(),
+  });
   return (
     <>
+      <JsonLd data={pageLd} />
       <PageHero eyebrow={hero?.eyebrow || "Contact"} title={hero?.title || "Let’s Find the Right Property for You"} body={hero?.body} crumbs={[{ name: "Home", href: "/" }, { name: "Contact", href: "/contact" }]} />
       <section className="pb-24">
         <div className="mx-auto grid max-w-[1400px] gap-10 px-4 sm:px-6 lg:grid-cols-12">
