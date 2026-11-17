@@ -7,6 +7,7 @@ import { audit } from "@/lib/audit";
 import { computeLeadScore } from "@/lib/lead-score";
 import { assertPublishFlags, buildSchema, columnsOf, getResource, resolveCustomRoleName, toRow } from "@/lib/resources-server";
 import { effectiveHas } from "@/lib/permissions";
+import { revalidateResource } from "@/lib/revalidate-public";
 
 type Ctx = { params: Promise<{ resource: string; id: string }> };
 
@@ -85,6 +86,7 @@ export const PATCH = handle<Ctx>(async (req, ctx) => {
   }
   const publishFlip = changed.includes("published") ? (updated.published ? "published" : "unpublished") : null;
   await audit({ user: me, action: publishFlip ? `${res.def.singular.toLowerCase()}.${publishFlip}` : `${res.def.singular.toLowerCase()}.updated`, entity: resource, entityId: numericId, metadata: { changed }, ip: getIp(req) });
+  revalidateResource(resource);
   return json({ data: updated });
 });
 
@@ -100,5 +102,6 @@ export const DELETE = handle<Ctx>(async (req, ctx) => {
   if (!row) throw new ApiError(404, "Not found");
   const r = row as Record<string, unknown>;
   await audit({ user: me, action: `${res.def.singular.toLowerCase()}.deleted`, entity: resource, entityId: numericId, metadata: { name: r.name ?? r.title ?? r.label ?? r.email }, ip: getIp(req) });
+  revalidateResource(resource);
   return json({ ok: true });
 });

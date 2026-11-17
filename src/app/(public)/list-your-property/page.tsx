@@ -11,16 +11,17 @@ import { ListPropertyForm } from "@/components/list-your-property/ListPropertyFo
 import { getLypSections } from "@/lib/site-pages";
 import { webPageJsonLd } from "@/lib/structured-data";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 3600;
+export const dynamic = "force-static";
 
 export async function generateMetadata(): Promise<Metadata> {
   const settings = await getSettings();
   return buildMetadata("/list-your-property", { title: settings.listYourProperty.title || "List Your Property with Mr.Home" });
 }
 
-export default async function ListYourPropertyPage() {
+export default async function ListYourPropertyPage({ preview = false }: { preview?: boolean }) {
   const [settings, markets, faqs] = await Promise.all([getSettings(), getPublishedMarkets(), getFaqs()]);
-  const sections = await getLypSections(settings);
+  const sections = await getLypSections(settings, preview);
   const hero = sections.find((s) => s.key === "hero");
   const benefitsSection = sections.find((s) => s.key === "benefits");
   const stepsSection = sections.find((s) => s.key === "steps");
@@ -59,7 +60,7 @@ export default async function ListYourPropertyPage() {
     title: settings.listYourProperty.title || "List Your Property with Mr.Home",
     description: heroBody,
     image: heroImage,
-  });
+  }, { preview });
   const pageLd = webPageJsonLd({
     path: "/list-your-property",
     canonical: seo.canonical,

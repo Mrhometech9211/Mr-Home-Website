@@ -20,10 +20,10 @@ type SP = Promise<{ market?: string; city?: string; type?: string; status?: stri
 
 export default async function ProjectsPage({ searchParams }: { searchParams: SP }) {
   const sp = await searchParams;
-  const [projects, markets, marketCitiesMap, types, sections, cityFacets] = await Promise.all([getPublishedProjects({ market: sp.market, city: sp.city, type: sp.type, status: sp.status, q: sp.q }), getPublishedMarkets(), getPublishedMarketCities(), getPropertyTypes(), getSections("projects"), getCityFacets()]);
+  const [projects, markets, marketCitiesMap, types, sections, cityFacets] = await Promise.all([getPublishedProjects({ market: sp.market, city: sp.city, type: sp.type, status: sp.status, q: sp.q }), getPublishedMarkets(), getPublishedMarketCities(), getPropertyTypes(), getSections("projects", true), getCityFacets()]);
   const hero = sections.find((s) => s.key === "hero");
   const activeMarket = markets.find((m) => m.slug === sp.market);
-  const seo = await resolvePageSeo("/projects", { title: "Premium Projects Across The Globe", description: hero?.body });
+  const seo = await resolvePageSeo("/projects", { title: "Premium Projects Across The Globe", description: hero?.body }, { preview: true });
   const pageLd = webPageJsonLd({
     path: "/projects",
     canonical: seo.canonical,

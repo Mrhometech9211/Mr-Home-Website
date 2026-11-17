@@ -1,10 +1,56 @@
 import type { NextConfig } from "next";
 
+const isProd = process.env.NODE_ENV === "production";
+
+// These headers used to be emitted by proxy.ts on every matched request. They
+// now live here so public pages and crawler files never need to start the
+// Node proxy. Keep the CSP identical to the previous values.
+function cspFor(frameable = false) {
+  return [
+    "default-src 'self'",
+    `script-src 'self' 'unsafe-inline'${isProd ? "" : " 'unsafe-eval'"} https://www.googletagmanager.com https://connect.facebook.net`,
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob: https:",
+    "media-src 'self' blob: https://res.cloudinary.com https:",
+    "font-src 'self' data:",
+    "connect-src 'self' https:" + (isProd ? "" : " http://127.0.0.1:* http://localhost:*"),
+    "frame-src 'self' https://maps.google.com https://www.google.com https://www.youtube.com https://www.youtube-nocookie.com https://player.vimeo.com",
+    "worker-src 'self' blob:",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    `frame-ancestors ${frameable ? "'self'" : "'none'"}`,
+    ...(isProd ? ["upgrade-insecure-requests"] : []),
+  ].join("; ");
+}
+
+const commonSecurityHeaders = [
+  { key: "X-Content-Type-Options", value: "nosniff" },
+  { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+  { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), payment=()" },
+  { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
+  ...(isProd ? [{ key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" }] : []),
+];
+
+const pageSecurityHeaders = (frameable: boolean) => [
+  { key: "Content-Security-Policy", value: cspFor(frameable) },
+  { key: "X-Frame-Options", value: frameable ? "SAMEORIGIN" : "DENY" },
+  ...commonSecurityHeaders,
+];
+
+// Media/brochure responses set their own Content-Security-Policy where needed
+// (SVG files are sandboxed by the route). Replacing it here would weaken that
+// sandbox, so these paths only opt into same-origin framing.
+const frameableFileHeaders = [{ key: "X-Frame-Options", value: "SAMEORIGIN" }];
+
 const nextConfig: NextConfig = {
   poweredByHeader: false,
   reactStrictMode: true,
   images: {
     formats: ["image/avif", "image/webp"],
+    // Media URLs stay stable when an admin replaces the file, so optimized
+    // variants must use the default short TTL instead of a day-long cache.
+    minimumCacheTTL: 60,
     remotePatterns: [{ protocol: "https", hostname: "**" }],
   },
   experimental: {
@@ -26,11 +72,70 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
-        // HTML must never be cached by browsers/proxies: stale HTML references
-        // immutable-hashed chunks from old builds → chunk-mismatch errors after
-        // deploys. Static assets keep their own immutable caching.
+        // Common hardening on every route (admin, API, previews and public HTML).
         source: "/:path*",
+        headers: commonSecurityHeaders,
+      },
+      {
+        // Authenticated/private responses must never be cached. Public pages
+        // keep Next's per-route policy so ISR can emit s-maxage for the three
+        // public routes that opt into it.
+        source: "/admin/:path*",
         headers: [{ key: "Cache-Control", value: "no-store, must-revalidate" }],
+      },
+      {
+        source: "/admin",
+        headers: [{ key: "Cache-Control", value: "no-store, must-revalidate" }],
+      },
+      {
+        source: "/api/:path*",
+        headers: [{ key: "Cache-Control", value: "no-store, must-revalidate" }],
+      },
+      {
+        source: "/preview/:path*",
+        headers: [{ key: "Cache-Control", value: "no-store, must-revalidate" }],
+      },
+      {
+        source: "/preview",
+        headers: [{ key: "Cache-Control", value: "no-store, must-revalidate" }],
+      },
+      {
+        // Public HTML. The private preview canvas and file viewer are excluded
+        // below because they must be frameable by this same origin.
+        source: "/:path((?!preview(?:/|$)|api/media(?:/|$)|api/brochures(?:/|$)).*)",
+        headers: pageSecurityHeaders(false),
+      },
+      {
+        source: "/",
+        headers: pageSecurityHeaders(false),
+      },
+      {
+        source: "/preview/:path*",
+        headers: pageSecurityHeaders(true),
+      },
+      {
+        source: "/api/media/:path*",
+        headers: frameableFileHeaders,
+      },
+      {
+        source: "/api/brochures/:path*",
+        headers: frameableFileHeaders,
+      },
+      {
+        source: "/preview/:path*",
+        headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow, noarchive" }],
+      },
+      {
+        source: "/admin/:path*",
+        headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow, noarchive" }],
+      },
+      {
+        source: "/admin",
+        headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow, noarchive" }],
+      },
+      {
+        source: "/api/admin/:path*",
+        headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow, noarchive" }],
       },
       // Immutable chunk caching is production-only. In dev, Turbopack serves
       // frequently-changing code from /_next/static/... URLs — with immutable,
@@ -39,9 +144,36 @@ const nextConfig: NextConfig = {
       ...(process.env.NODE_ENV === "production"
         ? [{
             source: "/_next/static/:path*",
-            headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }],
+            headers: [{ key: "Cache-Control", value: "public, max-age=31536000, s-maxage=31536000, immutable" }],
           }]
         : []),
+      {
+        // Stable public artwork and textures: let the browser reuse them.
+        source: "/(images|brand|textures)/:path*",
+        headers: [{ key: "Cache-Control", value: "public, max-age=604800, s-maxage=604800, stale-while-revalidate=86400" }],
+      },
+      {
+        source: "/favicon.ico",
+        headers: [{ key: "Cache-Control", value: "public, max-age=86400, s-maxage=86400" }],
+      },
+      {
+        source: "/robots.txt",
+        headers: [{ key: "Cache-Control", value: "public, max-age=86400, s-maxage=86400, stale-while-revalidate=3600" }],
+      },
+      {
+        source: "/sitemap.xml",
+        headers: [{ key: "Cache-Control", value: "public, max-age=3600, s-maxage=3600, stale-while-revalidate=600" }],
+      },
+      {
+        source: "/manifest.webmanifest",
+        headers: [{ key: "Cache-Control", value: "public, max-age=86400, s-maxage=86400" }],
+      },
+      {
+        // Media URLs stay stable when an admin replaces the file. Use a short,
+        // bounded TTL so a cached redirect can never outlive that replacement.
+        source: "/api/media/:path*",
+        headers: [{ key: "Cache-Control", value: "public, max-age=60, s-maxage=60, stale-while-revalidate=60" }],
+      },
     ];
   },
 };

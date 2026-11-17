@@ -22,9 +22,10 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     getSettings(),
     db.select({ count: sql<number>`count(*)::int` }).from(leads).where(and(eq(leads.status, "NEW"), eq(leads.archived, false))),
   ]);
+  const permissions = user.role === "CUSTOM" ? user.effectivePermissions ?? [] : (ROLE_PERMISSIONS[user.role] as unknown as string[]);
   return (
-    <AdminShell user={{ id: user.id, name: user.name, email: user.email, role: user.role }} permissions={user.role === "CUSTOM" ? user.effectivePermissions ?? [] : ROLE_PERMISSIONS[user.role] as unknown as string[]} brandName={settings.brandName} logo={settings.logo} newLeads={count}>
-      <LeadNotifier />
+    <AdminShell user={{ id: user.id, name: user.name, email: user.email, role: user.role }} permissions={permissions} brandName={settings.brandName} logo={settings.logo} newLeads={count}>
+      <LeadNotifier canReadLeads={permissions.includes("leads.read")} />
       {children}
     </AdminShell>
   );

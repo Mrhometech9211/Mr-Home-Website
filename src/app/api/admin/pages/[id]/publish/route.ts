@@ -7,6 +7,7 @@ import { audit } from "@/lib/audit";
 import { slugFromTitle, validateForPublish } from "@/lib/page-builder";
 import { slugify } from "@/lib/utils";
 import { ApiError } from "@/lib/api";
+import { revalidatePublicContent } from "@/lib/revalidate-public";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
 
@@ -41,6 +42,7 @@ export const POST = handle(async (req: Request, { params }: { params: Promise<{ 
     if (!row) throw new ApiError(500, "Publish failed");
     await saveRevision(pageId, user.id, user.name, `Published: ${headlineFor(sections)}`, sections);
     await audit({ user, action: "page.published", entity: "pages", entityId: pageId, metadata: { slug }, ip: getIp(req) });
+    revalidatePublicContent();
     return json({ data: { status: row.status, publishedAt: row.publishedAt?.toISOString() ?? null, updatedAt: row.updatedAt.toISOString() } });
   }
 
@@ -52,5 +54,6 @@ export const POST = handle(async (req: Request, { params }: { params: Promise<{ 
     .returning();
   if (!row) throw new ApiError(500, "Unpublish failed");
   await audit({ user, action: "page.unpublished", entity: "pages", entityId: pageId, ip: getIp(req) });
+  revalidatePublicContent();
   return json({ data: { status: row.status, publishedAt: null, updatedAt: row.updatedAt.toISOString() } });
 });

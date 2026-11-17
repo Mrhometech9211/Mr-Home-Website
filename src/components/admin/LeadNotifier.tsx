@@ -3,24 +3,19 @@
 /**
  * Desktop lead notifier (admin panel).
  *
- * Works while the admin tab is UNFOCUSED:
- *   1. The poll loop runs inside a Web Worker. Browsers deep-throttle timers in
- *      hidden tabs, but worker timers keep firing on schedule, so fetches keep
- *      happening at the configured cadence no matter which tab is visible.
- *   2. A new lead id fires a native OS notification (Windows toast when the tab
- *      runs in Chrome/Edge) — the Notification constructor is deliberately used
- *      instead of in-page UI so the toast appears without tab focus.
- *   3. Sound: a single AudioContext is created + unlocked on the first user
- *      gesture and reused afterwards (a fresh AudioContext created while hidden
- *      would be born suspended, which is why the old version was silent).
+ * CPU guardrail: this component must never run a background poll loop. It
+ * fetches only when the admin opens the bell, enables notifications, or
+ * returns to the tab (throttled). Hidden tabs make no requests, so an idle
+ * admin session cannot consume Fluid CPU.
  *
- * Admin → Settings → Notifications reuses playChime/playDing/playCustom +
- * fireNotification for its "Send test notification" button.
+ * OS notifications and sound still work while the tab is visible. When the tab
+ * is hidden there is intentionally no polling; the next focus refresh catches
+ * up on leads.
  */
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
-import { BellOff, BellRing } from "lucide-react";
+import { BellOff, BellRing, RefreshCw } from "lucide-react";
 
 export type NotifierConfig = {
   pollSeconds: number;
@@ -37,9 +32,10 @@ type Feed = {
 };
 
 const LAST_SEEN_KEY = "mrh-notifier-last-lead-id";
+const MIN_REFRESH_MS = 60_000;
 
 /* ------------------------------------------------------------------ */
-/* Sound helpers (unlocked, reused context — works in hidden tabs).     */
+/* Sound helpers (unlocked, reused context).                            */
 /* ------------------------------------------------------------------ */
 
 type AudioHost = typeof globalThis & {
@@ -47,7 +43,6 @@ type AudioHost = typeof globalThis & {
   __mrhAudioUnlocked?: boolean;
 };
 
-/** Returns the shared AudioContext, created (and resumed) on demand. */
 function sharedAudioCtx(): AudioContext | null {
   try {
     const g = globalThis as AudioHost;
@@ -63,7 +58,6 @@ function sharedAudioCtx(): AudioContext | null {
   }
 }
 
-/** Built-in chime: two rising notes (no audio asset needed). */
 export function playChime(volume: number) {
   const ctx = sharedAudioCtx();
   if (!ctx) return;
@@ -86,7 +80,6 @@ export function playChime(volume: number) {
   } catch { /* ignore */ }
 }
 
-/** Ding: single note. */
 export function playDing(volume: number) {
   const ctx = sharedAudioCtx();
   if (!ctx) return;
@@ -105,7 +98,6 @@ export function playDing(volume: number) {
   } catch { /* ignore */ }
 }
 
-/** Plays the configured custom sound file at the configured volume. */
 export function playCustom(volume: number, soundUrl: string) {
   try {
     const audio = new Audio(soundUrl);
@@ -120,12 +112,10 @@ export function playSound(sound: NotifierConfig["sound"], soundUrl: string, volu
   else playChime(volume);
 }
 
-/**
- * Fires the OS notification (permission must already be granted). Uses the
- * constructor — not in-page markup — so the toast is delivered by the OS and
- * shows even when the browser tab is not focused.
- */
-export function fireNotification(titleTemplate: string, lead: { id?: number; name: string; source: string | null; city: string | null; page: string | null }) {
+export function fireNotification(
+  titleTemplate: string,
+  lead: { id?: number; name: string; source: string | null; city: string | null; page: string | null },
+) {
   if (typeof Notification === "undefined" || Notification.permission !== "granted") return false;
   const title = (titleTemplate || "New lead — {{source}}").replace("{{source}}", lead.source || lead.page || "website");
   const body = `${lead.name}${lead.city ? ` · ${lead.city}` : ""}`;
@@ -139,7 +129,7 @@ export function fireNotification(titleTemplate: string, lead: { id?: number; nam
 }
 
 /* ------------------------------------------------------------------ */
-/* Poller.                                                             */
+/* Notifier.                                                           */
 /* ------------------------------------------------------------------ */
 
 const fetchFeed = async (): Promise<Feed | null> => {
@@ -153,38 +143,32 @@ const fetchFeed = async (): Promise<Feed | null> => {
   }
 };
 
-/** Web-Worker source: a plain interval that is NOT throttled in hidden tabs. */
-const TICKER_SRC = `let t=null;self.onmessage=(e)=>{const d=e.data||{};if(d.stop){if(t){clearInterval(t);t=null;}return;}if(d.intervalMs){if(t)clearInterval(t);t=setInterval(()=>self.postMessage('tick'),Math.max(3000,d.intervalMs));self.postMessage('started');}};`;
-
-export function LeadNotifier() {
+function LeadNotifierInner() {
   const router = useRouter();
-  // Start at a server/client-stable value and read the real browser permission
-  // via useSyncExternalStore — reading Notification.permission directly during
-  // hydration rendered a different first paint than the server HTML and
-  // crashed hydration. Handles hydration by using the server snapshot on the
-  // first client render.
   const emptySubscribe = useCallback(() => () => {}, []);
   const browserPermission = useSyncExternalStore(
     emptySubscribe,
     () => (typeof Notification === "undefined" ? ("unsupported" as const) : Notification.permission),
     () => "unsupported" as const,
   );
-  // requestPermission() updates Notification.permission globally, but the
-  // button's own result is applied immediately so the UI flips right away.
   const [requestedPermission, setRequestedPermission] = useState<"unsupported" | NotificationPermission | null>(null);
   const permission = requestedPermission ?? browserPermission;
-  // In-page fallback: leads are still announced visibly when the OS toast
-  // cannot be shown (permission not granted / API unsupported).
   const [inPage, setInPage] = useState<{ name: string; source: string | null } | null>(null);
+  const [open, setOpen] = useState(false);
+  const [feed, setFeed] = useState<Feed | null>(null);
+  const [allowed, setAllowed] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(false);
+  const lastFetchRef = useRef(0);
 
   const announce = useCallback(
-    (feed: Feed) => {
-      const latest = feed.latest;
+    (next: Feed) => {
+      const latest = next.latest;
       if (!latest) return;
       const last = Number(localStorage.getItem(LAST_SEEN_KEY) ?? "0");
       if (last && latest.id > last) {
-        const osShown = fireNotification(feed.config.titleTemplate, latest);
-        playSound(feed.config.sound, feed.config.soundUrl, feed.config.volume);
+        const osShown = fireNotification(next.config.titleTemplate, latest);
+        playSound(next.config.sound, next.config.soundUrl, next.config.volume);
         if (!osShown) setInPage({ name: latest.name, source: latest.source ?? latest.page });
         router.refresh(); // refresh lead badge/counts
       }
@@ -193,60 +177,34 @@ export function LeadNotifier() {
     [router],
   );
 
-  const pollRef = useRef<() => void>(() => {});
-  const intervalRef = useRef(20_000);
-  const tickerRef = useRef<Worker | null>(null);
-
-  const poll = useCallback(async () => {
-    const feed = await fetchFeed();
-    if (!feed || !feed.allowed) return;
-    announce(feed);
-    const ms = Math.max(5, feed.config.pollSeconds) * 1000;
-    if (ms !== intervalRef.current) {
-      intervalRef.current = ms;
-      tickerRef.current?.postMessage({ intervalMs: ms });
+  const refresh = useCallback(async (force = false) => {
+    if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
+    const now = Date.now();
+    if (!force && now - lastFetchRef.current < MIN_REFRESH_MS) return;
+    lastFetchRef.current = now;
+    setLoading(true);
+    setError(false);
+    const next = await fetchFeed();
+    setLoading(false);
+    if (!next) {
+      setError(true);
+      return;
     }
+    setFeed(next);
+    setAllowed(next.allowed);
+    if (next.allowed) announce(next);
   }, [announce]);
 
-  // Start the worker ticker (with a plain-interval fallback if Workers fail).
+  // A single fetch when the tab becomes visible again. No timer, no hidden-tab
+  // polling, and no request when notifications are not granted.
   useEffect(() => {
-    pollRef.current = poll;
-  }, [poll]);
-
-  useEffect(() => {
-    type WorkerHost = typeof globalThis & { __mrhTickerUrl?: string };
-    const g = globalThis as WorkerHost;
-    try {
-      let url = g.__mrhTickerUrl;
-      if (!url) {
-        url = URL.createObjectURL(new Blob([TICKER_SRC], { type: "text/javascript" }));
-        g.__mrhTickerUrl = url;
-      }
-      const worker = new Worker(url);
-      worker.onmessage = (e) => { if (e.data === "tick") void pollRef.current(); };
-      worker.postMessage({ intervalMs: intervalRef.current });
-      tickerRef.current = worker;
-    } catch {
-      // Worker unavailable — hidden-tab throttled fallback still works on focus.
-      const fallback = setInterval(() => void pollRef.current(), intervalRef.current);
-      return () => clearInterval(fallback);
-    }
-    return () => {
-      tickerRef.current?.terminate();
-      tickerRef.current = null;
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void refresh();
     };
-  }, []);
-
-  // Kick a poll immediately whenever the tab becomes visible again so the UI
-  // never waits out the current tick after returning to the admin panel.
-  useEffect(() => {
-    const onVisible = () => { if (!document.hidden) void pollRef.current(); };
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);
-  }, []);
+  }, [refresh]);
 
-  // Unlock audio on the first user gesture, so notifications that arrive later
-  // (possibly while hidden) can actually be heard.
   useEffect(() => {
     const g = globalThis as AudioHost;
     if (g.__mrhAudioUnlocked) return;
@@ -264,7 +222,6 @@ export function LeadNotifier() {
     };
   }, []);
 
-  // Auto-dismiss the in-page lead card after 8 seconds.
   useEffect(() => {
     if (!inPage) return;
     const t = setTimeout(() => setInPage(null), 8000);
@@ -273,8 +230,7 @@ export function LeadNotifier() {
 
   if (permission === "unsupported") return null;
 
-  // Fully granted OS notifications and no in-page fallback: render nothing.
-  if (permission === "granted" && !inPage) return null;
+  const latest = feed?.latest ?? null;
 
   return (
     <>
@@ -287,12 +243,61 @@ export function LeadNotifier() {
           </div>
         </div>
       )}
+
+      {permission === "granted" && (
+        <div className="fixed bottom-4 right-4 z-[80] flex flex-col items-end gap-2">
+          {open && (
+            <div className="w-[290px] rounded-2xl border border-ink/10 bg-white p-4 text-ink shadow-xl">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-mist">Lead notifications</p>
+                <button
+                  type="button"
+                  onClick={() => void refresh(true)}
+                  disabled={loading}
+                  className="rounded-lg p-1.5 text-charcoal hover:bg-slate-100 disabled:opacity-50"
+                  aria-label="Refresh lead feed"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+                </button>
+              </div>
+              {!allowed ? (
+                <p className="mt-2 text-[12.5px] text-charcoal/70">Lead notifications are disabled in Settings → Notifications.</p>
+              ) : error ? (
+                <p className="mt-2 text-[12.5px] text-charcoal/70">Could not reach the server. Try refresh.</p>
+              ) : latest ? (
+                <div className="mt-2">
+                  <p className="text-[13px] font-semibold">{latest.name}</p>
+                  <p className="mt-0.5 text-[11.5px] text-charcoal/60">{latest.source || latest.page || "website"}{latest.city ? ` · ${latest.city}` : ""}</p>
+                </div>
+              ) : (
+                <p className="mt-2 text-[12.5px] text-charcoal/70">No leads yet.</p>
+              )}
+              <p className="mt-3 text-[10.5px] leading-relaxed text-mist">Checks on bell open and when you return to this tab. No background polling.</p>
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={() => {
+              const next = !open;
+              setOpen(next);
+              if (next) void refresh(true);
+            }}
+            className="inline-flex items-center gap-2 rounded-full bg-ink px-4 py-2.5 text-[12.5px] font-semibold text-white shadow-lg transition hover:bg-ink/85"
+            aria-expanded={open}
+            aria-label="Open lead notifications"
+          >
+            <BellRing className="h-4 w-4 text-brand-bright" /> Leads
+          </button>
+        </div>
+      )}
+
       {permission === "denied" && (
         <div className="fixed bottom-4 right-4 z-[80] inline-flex max-w-[320px] items-start gap-2 rounded-full bg-ink/85 px-4 py-2.5 text-[12.5px] font-semibold text-white shadow-lg">
           <BellOff className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
           <span>Desktop lead notifications are blocked. Click the lock/site icon in your browser&rsquo;s address bar and allow Notifications.</span>
         </div>
       )}
+
       {permission === "default" && (
         <button
           type="button"
@@ -300,7 +305,7 @@ export function LeadNotifier() {
             if (typeof Notification === "undefined") return;
             const res = await Notification.requestPermission();
             setRequestedPermission(res);
-            if (res === "granted") void pollRef.current();
+            if (res === "granted") void refresh(true);
           }}
           className="fixed bottom-4 right-4 z-[80] inline-flex items-center gap-2 rounded-full bg-ink px-4 py-2.5 text-[12.5px] font-semibold text-white shadow-lg transition hover:bg-ink/85"
         >
@@ -309,4 +314,11 @@ export function LeadNotifier() {
       )}
     </>
   );
+}
+
+export function LeadNotifier({ canReadLeads = false }: { canReadLeads?: boolean }) {
+  // Do not mount the notifier at all for users who cannot read leads: this
+  // avoids repeated 403 requests and keeps the CPU guardrail explicit.
+  if (!canReadLeads) return null;
+  return <LeadNotifierInner />;
 }

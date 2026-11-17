@@ -10,17 +10,18 @@ import { Breadcrumbs, JsonLd } from "@/components/site/Breadcrumbs";
 import { webPageJsonLd } from "@/lib/structured-data";
 import { MarketMetricsDashboard } from "@/components/markets/MarketMetricsDashboard";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 300;
+export const dynamic = "force-static";
 
 export async function generateMetadata(): Promise<Metadata> {
   return buildMetadata("/markets", { title: "Global Presence, Local Expertise" });
 }
 
-export default async function MarketsPage() {
-  const [markets, counts, sections, metrics] = await Promise.all([getPublishedMarkets(), getProjectCountsByMarket(), getSections("markets"), getPublishedMarketMetrics()]);
+export default async function MarketsPage({ preview = false }: { preview?: boolean }) {
+  const [markets, counts, sections, metrics] = await Promise.all([getPublishedMarkets(), getProjectCountsByMarket(), getSections("markets", preview), getPublishedMarketMetrics()]);
   const hero = sections.find((s) => s.key === "hero");
   const section = { ...(hero ?? {}), id: 0, page: "markets", key: "earth", eyebrow: hero?.eyebrow ?? "Markets", title: hero?.title ?? "Global Presence, Local Expertise", body: hero?.body ?? null, ctaLabel: "Talk to an Advisor", ctaHref: "/contact", subtitle: null, secondaryCtaLabel: null, secondaryCtaHref: null, image: null, video: null, background: null, items: [], order: 0, enabled: true, updatedAt: new Date() };
-  const seo = await resolvePageSeo("/markets", { title: "Global Presence, Local Expertise", description: hero?.body });
+  const seo = await resolvePageSeo("/markets", { title: "Global Presence, Local Expertise", description: hero?.body }, { preview });
   const pageLd = webPageJsonLd({ path: "/markets", canonical: seo.canonical, type: "CollectionPage", name: seo.title, description: seo.description });
 
   return (

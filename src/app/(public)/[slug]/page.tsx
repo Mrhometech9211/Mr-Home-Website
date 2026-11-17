@@ -28,7 +28,10 @@ const CustomSections = ({ title, body, items }: { title: string; body?: string |
   </div>
 );
 
-export const dynamic = "force-dynamic";
+// Legal and published builder pages are public and request-independent. They
+// can be cached and revalidated on demand when content is published.
+export const revalidate = 3600;
+export const dynamic = "force-static";
 type Params = Promise<{ slug: string }>;
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {

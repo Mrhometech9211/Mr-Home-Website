@@ -8,20 +8,21 @@ import { Button3D } from "@/components/ui/Button3D";
 import { JsonLd } from "@/components/site/Breadcrumbs";
 import { webPageJsonLd } from "@/lib/structured-data";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 3600;
+export const dynamic = "force-static";
 
 export async function generateMetadata(): Promise<Metadata> {
   return buildMetadata("/why-mr-home", { title: "Why Mr.Home" });
 }
 
-export default async function WhyPage() {
-  const [sections, faqs, testimonials, settings] = await Promise.all([getSections("why-mr-home"), getFaqs(), getTestimonials(), getSettings()]);
+export default async function WhyPage({ preview = false }: { preview?: boolean }) {
+  const [sections, faqs, testimonials, settings] = await Promise.all([getSections("why-mr-home", preview), getFaqs(), getTestimonials(), getSettings()]);
   const byKey = Object.fromEntries(sections.map((s) => [s.key, s]));
   const hero = byKey.hero;
   const values = byKey.values;
   const process = byKey.process;
   const faqLd = faqs.length ? { "@context": "https://schema.org", "@type": "FAQPage", mainEntity: faqs.map((f) => ({ "@type": "Question", name: f.question, acceptedAnswer: { "@type": "Answer", text: f.answer } })) } : null;
-  const seo = await resolvePageSeo("/why-mr-home", { title: hero?.title || "Why Mr.Home", description: hero?.body, image: hero?.image });
+  const seo = await resolvePageSeo("/why-mr-home", { title: hero?.title || "Why Mr.Home", description: hero?.body, image: hero?.image }, { preview });
   const pageLd = webPageJsonLd({ path: "/why-mr-home", canonical: seo.canonical, name: seo.title, description: seo.description });
 
   return (

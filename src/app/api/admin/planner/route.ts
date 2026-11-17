@@ -1,4 +1,4 @@
-import { and, asc, eq, gte, lt } from "drizzle-orm";
+import { and, asc, eq, gte, isNotNull, lt } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import { plannerItems } from "@/db/schema";
@@ -14,6 +14,34 @@ const idSchema = z.coerce.number().int().positive();
 export const GET = handle(async (req) => {
   const me = await requireUser("planner.read");
   const url = new URL(req.url);
+  // The shell's alarm watcher only needs open items whose reminder is current.
+  // Keeping this response small and narrow avoids loading the full planner on
+  // every focus/visibility tick.
+  if (url.searchParams.get("alarm") === "1") {
+    const data = await db
+      .select({
+        id: plannerItems.id,
+        title: plannerItems.title,
+        kind: plannerItems.kind,
+        notes: plannerItems.notes,
+        startsAt: plannerItems.startsAt,
+        endsAt: plannerItems.endsAt,
+        reminderAt: plannerItems.reminderAt,
+        alarmEnabled: plannerItems.alarmEnabled,
+        sound: plannerItems.sound,
+        done: plannerItems.done,
+      })
+      .from(plannerItems)
+      .where(and(
+        eq(plannerItems.ownerId, me.id),
+        eq(plannerItems.done, false),
+        isNotNull(plannerItems.reminderAt),
+        gte(plannerItems.reminderAt, new Date(Date.now() - 15 * 60_000)),
+      ))
+      .orderBy(asc(plannerItems.startsAt))
+      .limit(200);
+    return json({ data });
+  }
   const from = url.searchParams.get("from");
   const to = url.searchParams.get("to");
   const filters = [eq(plannerItems.ownerId, me.id)];

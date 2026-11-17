@@ -14,12 +14,12 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function BuyPage({ searchParams }: { searchParams: Promise<MarketplaceSearchParams> }) {
   const sp = await searchParams;
-  const [sections, locations] = await Promise.all([getSections("buy"), getPublishedProjectLocations()]);
+  const [sections, locations] = await Promise.all([getSections("buy", true), getPublishedProjectLocations()]);
   const hero = sections.find((s) => s.key === "hero");
   const seo = await resolvePageSeo("/buy", {
     title: "Properties for Sale Across The Globe",
     description: hero?.body || "Curated apartments, villas and townhouses across our global markets.",
-  });
+  }, { preview: true });
   const pageLd = webPageJsonLd({
     path: "/buy",
     canonical: seo.canonical,

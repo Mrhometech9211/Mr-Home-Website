@@ -18,7 +18,7 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function ContactPage({ searchParams }: { searchParams: Promise<{ market?: string; city?: string; project?: string }> }) {
   const sp = await searchParams;
-  const [s, markets, marketCitiesMap, projects, sections] = await Promise.all([getSettings(), getPublishedMarkets(), getPublishedMarketCities(), getPublishedProjects(), getSections("contact")]);
+  const [s, markets, marketCitiesMap, projects, sections] = await Promise.all([getSettings(), getPublishedMarkets(), getPublishedMarketCities(), getPublishedProjects(), getSections("contact", true)]);
   // "Request Details" buttons deep-link here with ?project=<slug>; preselect
   // that project (and its market) so the visitor never re-types the context.
   const preProject = sp.project ? projects.find((p) => p.slug === sp.project && p.published && !p.archived) : undefined;
@@ -27,7 +27,7 @@ export default async function ContactPage({ searchParams }: { searchParams: Prom
   const seo = await resolvePageSeo("/contact", {
     title: "Contact — Let’s Find the Right Property for You",
     description: hero?.body,
-  });
+  }, { preview: true });
   const pageLd = webPageJsonLd({
     path: "/contact",
     canonical: seo.canonical,

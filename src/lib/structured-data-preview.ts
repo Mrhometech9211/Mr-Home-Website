@@ -161,7 +161,7 @@ export async function buildCityPreview(id: number): Promise<StructuredDataPrevie
 export async function buildBuiltinPagePreview(key: string): Promise<StructuredDataPreview> {
   const page = getBuiltinPage(key);
   if (!page) throw new ApiError(404, "Built-in page not found");
-  const [settings, sections, rentPublic] = await Promise.all([getSettings(), getSections(key), isRentPublic()]);
+  const [settings, sections, rentPublic] = await Promise.all([getSettings(), getSections(key, true), isRentPublic()]);
   const hero = sections.find((section) => section.key === "hero");
   let fallback = { title: page.title, description: hero?.body, image: hero?.image };
   if (key === "home") fallback = { title: settings.seoDefaultTitle, description: settings.seoDefaultDescription, image: settings.seoOgImage };
@@ -173,7 +173,7 @@ export async function buildBuiltinPagePreview(key: string): Promise<StructuredDa
   if (key === "news") fallback = { title: "News & Market Insights", description: "Market reports, investment guides and updates from MR.HOME across 10 global real estate markets.", image: hero?.image };
   if (key === "list-your-property") fallback = { title: settings.listYourProperty.title || "List Your Property with Mr.Home", description: hero?.body, image: hero?.image };
   if (key === "why-mr-home") fallback = { title: hero?.title || "Why Mr.Home", description: hero?.body, image: hero?.image };
-  const seo = await resolvePageSeo(page.path, fallback);
+  const seo = await resolvePageSeo(page.path, fallback, { preview: true });
   const pageLd = webPageJsonLd({
     path: page.path,
     canonical: seo.canonical,

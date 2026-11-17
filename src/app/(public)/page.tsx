@@ -11,17 +11,20 @@ import { InquirySection } from "@/components/home/InquirySection";
 import { JsonLd } from "@/components/site/Breadcrumbs";
 import { webPageJsonLd } from "@/lib/structured-data";
 
-export const dynamic = "force-dynamic";
+// Public marketing content is request-independent. Admin writes invalidate the
+// root layout, so the timeout is only a fallback.
+export const revalidate = 300;
+export const dynamic = "force-static";
 
 export async function generateMetadata(): Promise<Metadata> {
   const s = await getSettings();
   return buildMetadata("/", { title: s.seoDefaultTitle, description: s.seoDefaultDescription });
 }
 
-export default async function HomePage() {
+export default async function HomePage({ preview = false }: { preview?: boolean }) {
   const [settings, sections, markets, projects, counts, marketCitiesMap, publishedProjectCount] = await Promise.all([
     getSettings(),
-    getSections("home"),
+    getSections("home", preview),
     getPublishedMarkets(),
     getPublishedProjects({ limit: 12 }),
     getProjectCountsByMarket(),
@@ -34,7 +37,7 @@ export default async function HomePage() {
   const showcase = (featured.length >= 4 ? featured : projects).slice(0, 8);
   const formMarkets = markets.map((m) => ({ id: m.id, name: m.name, slug: m.slug, flag: m.flag, cities: marketCitiesMap[m.id] }));
   const formProjects = projects.map((p) => ({ id: p.id, name: p.name, marketId: p.marketId }));
-  const seo = await resolvePageSeo("/", { title: settings.seoDefaultTitle, description: settings.seoDefaultDescription });
+  const seo = await resolvePageSeo("/", { title: settings.seoDefaultTitle, description: settings.seoDefaultDescription }, { preview });
   const pageLd = webPageJsonLd({
     path: "/",
     canonical: seo.canonical,

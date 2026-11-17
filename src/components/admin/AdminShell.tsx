@@ -19,18 +19,30 @@ function Shell({ user, permissions, brandName, logo, children, newLeads }: Props
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
 
-  // Session heartbeat: rotates the session periodically and redirects when expired.
+  // Session checks are navigation-driven by the admin layout and every API
+  // route. Do not poll: only re-check when an admin returns to a tab that has
+  // been idle for a while. The timestamp is shared across navigations so a
+  // page change never triggers an extra session request.
   useEffect(() => {
     let active = true;
-    const ping = async () => {
+    const CHECK_KEY = "mrh-session-checked-at";
+    const check = async () => {
+      if (!active || document.visibilityState !== "visible") return;
+      let last = 0;
+      try { last = Number(sessionStorage.getItem(CHECK_KEY) ?? "0"); } catch { /* private mode */ }
+      if (Number.isFinite(last) && Date.now() - last < 30 * 60 * 1000) return;
+      try { sessionStorage.setItem(CHECK_KEY, String(Date.now())); } catch { /* private mode */ }
       try {
         const res = await fetch("/api/auth/session", { credentials: "same-origin" });
-        if (res.status === 401 && active) { toast("Your session has expired. Please sign in again.", "error"); router.replace(`/admin/login?next=${encodeURIComponent(pathname)}`); }
+        if (res.status === 401 && active) {
+          toast("Your session has expired. Please sign in again.", "error");
+          router.replace(`/admin/login?next=${encodeURIComponent(pathname)}`);
+        }
       } catch { /* offline — ignore */ }
     };
-    ping();
-    const t = setInterval(ping, 5 * 60 * 1000);
-    return () => { active = false; clearInterval(t); };
+    const onVisible = () => { void check(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => { active = false; document.removeEventListener("visibilitychange", onVisible); };
   }, [pathname, router, toast]);
 
   const logout = async () => {

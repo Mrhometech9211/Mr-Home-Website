@@ -4,7 +4,6 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, MapPin } from "lucide-react";
 import { getCitiesByMarket, getCityBySlug, getMarketBySlug, getPublishedProjects, getSettings } from "@/lib/content";
-import { getCurrentUser } from "@/lib/auth";
 import { buildMetadata, resolvePageSeo } from "@/lib/seo";
 import { Breadcrumbs, JsonLd } from "@/components/site/Breadcrumbs";
 import { Button3D } from "@/components/ui/Button3D";
@@ -12,7 +11,8 @@ import { Reveal } from "@/components/site/Reveal";
 import { ProjectCard } from "@/components/site/ProjectCard";
 import { webPageJsonLd } from "@/lib/structured-data";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 300;
+export const dynamic = "force-static";
 type Params = Promise<{ slug: string; city: string }>;
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
@@ -30,8 +30,7 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
 
 export default async function CityPage({ params }: { params: Params }) {
   const { slug: marketSlug, city: citySlug } = await params;
-  const user = await getCurrentUser();
-  const market = await getMarketBySlug(marketSlug, !!user);
+  const market = await getMarketBySlug(marketSlug);
   if (!market) notFound();
   const [city, settings, siblingCities] = await Promise.all([getCityBySlug(market.id, citySlug), getSettings(), getCitiesByMarket(market.id)]);
   if (!city) notFound();

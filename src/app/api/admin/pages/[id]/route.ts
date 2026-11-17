@@ -7,6 +7,7 @@ import { audit } from "@/lib/audit";
 import { isReservedSlug, sectionsSchema, slugFromTitle, type BuilderSection } from "@/lib/page-builder";
 import { slugify } from "@/lib/utils";
 import { ApiError } from "@/lib/api";
+import { revalidatePublicContent } from "@/lib/revalidate-public";
 import { z } from "zod";
 import { eq, ne, and } from "drizzle-orm";
 
@@ -113,6 +114,10 @@ export const PATCH = handle(async (req: Request, { params }: { params: Promise<{
     metadata: { fields: Object.keys(input).filter((k) => k !== "draft"), draftUpdated: input.draft !== undefined },
     ip: getIp(req),
   });
+  // Metadata/nav edits affect the published page even before a re-publish.
+  if (row.status === "published" || input.navLabel !== undefined || input.navVisible !== undefined || input.navOrder !== undefined) {
+    revalidatePublicContent();
+  }
   return json({ data: serializePage(row) });
 });
 
@@ -125,5 +130,6 @@ export const DELETE = handle(async (req: Request, { params }: { params: Promise<
 
   await db.delete(pages).where(eq(pages.id, pageId)); // page_revisions cascade
   await audit({ user, action: "page.deleted", entity: "pages", entityId: pageId, metadata: { slug: page.slug }, ip: getIp(req) });
+  revalidatePublicContent();
   return json({ ok: true });
 });

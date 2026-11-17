@@ -171,13 +171,16 @@ export function initDb(): Promise<AppDatabase> {
       // through the `db` proxy, which requires a registered instance to work.
       globalForDb.__mrhDb = db;
       try {
-        // Zero-touch deploys: apply the schema and demo seed automatically on the
-        // first request against ANY database (idempotent — existing data is never
-        // touched). This removes the manual `drizzle-kit migrate` step entirely.
-        await ensureSchema(db);
-        if (process.env.MRH_AUTO_SEED !== "0") {
-          const { runSeed } = await import("./seed");
-          await runSeed();
+        // A production build may prerender public ISR pages from the real
+        // database. It must never migrate or seed production as a side effect,
+        // so the build gets read-only access; runtime keeps the zero-touch path.
+        const readOnlyBuild = process.env.NEXT_PHASE === "phase-production-build" && !!getDatabaseUrl();
+        if (!readOnlyBuild) {
+          await ensureSchema(db);
+          if (process.env.MRH_AUTO_SEED !== "0") {
+            const { runSeed } = await import("./seed");
+            await runSeed();
+          }
         }
       } catch (e) {
         // Roll back registration so a later request can retry from scratch.

@@ -6,6 +6,7 @@ import { requireUser } from "@/lib/auth";
 import { audit } from "@/lib/audit";
 import { DEFAULT_SETTINGS, mergeSettings } from "@/lib/settings-types";
 import { settingsPatchSchema } from "@/lib/settings-payload";
+import { revalidatePublicContent } from "@/lib/revalidate-public";
 
 export const GET = handle(async () => {
   await requireUser("settings.read");
@@ -24,5 +25,6 @@ export const PUT = handle(async (req) => {
   const cur = current as unknown as Record<string, unknown>;
   const changed = Object.keys(patch).filter((k) => JSON.stringify(cur[k]) !== JSON.stringify((patch as Record<string, unknown>)[k]));
   await audit({ user: me, action: "settings.updated", entity: "settings", entityId: 1, metadata: { changed }, ip: getIp(req) });
+  revalidatePublicContent();
   return json({ data: next });
 });

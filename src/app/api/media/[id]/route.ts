@@ -11,6 +11,8 @@ export const runtime = "nodejs";
 /** Small per-instance cache for generated thumbnails (bounded, FIFO). */
 const thumbCache = new Map<string, Buffer>();
 const THUMB_CACHE_MAX = 300;
+/** Replacement uses the same media URL, so keep every public TTL short. */
+const MEDIA_CACHE = "public, max-age=60, s-maxage=60, stale-while-revalidate=60";
 
 export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }) {
   await initDb();
@@ -30,7 +32,8 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
   if (m.mimeType === "image/svg+xml") headers["Content-Security-Policy"] = "sandbox; script-src 'none'";
 
   // Thumbnails: admin grids ask for ?w=320 instead of pulling multi-megabyte
-  // originals for every tile. Resized WebP is cached at the edge for a year.
+  // originals for every tile. The TTL is intentionally short: a replacement
+  // reuses this URL, so a long immutable cache could outlive the old object.
   const thumbParam = Number(new URL(req.url).searchParams.get("w") ?? 0);
   const thumbWidth = [160, 320, 640, 1280].includes(thumbParam) ? thumbParam : 0;
   if (thumbWidth && m.mimeType.startsWith("image/") && m.mimeType !== "image/svg+xml") {
@@ -46,7 +49,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
           headers: {
             "Content-Type": "image/webp",
             "Content-Length": String(cached.length),
-            "Cache-Control": "public, max-age=31536000, immutable",
+            "Cache-Control": MEDIA_CACHE,
             "X-Content-Type-Options": "nosniff",
           },
         });
@@ -67,7 +70,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
           headers: {
             "Content-Type": "image/webp",
             "Content-Length": String(out.length),
-            "Cache-Control": "public, max-age=31536000, immutable",
+            "Cache-Control": MEDIA_CACHE,
             "X-Content-Type-Options": "nosniff",
           },
         });
@@ -109,14 +112,19 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
     const publicBase = r2PublicUrlBase();
     if (publicBase) {
       const target = `${publicBase.replace(/\/+$/, "")}/${m.storageKey}`;
-      const redirect = new Response(null, { status: 302, headers: { Location: target } });
+      // Cache the redirect briefly so repeat viewers avoid most invocations,
+      // while an in-place replacement still takes effect within a minute.
+      const redirect = new Response(null, {
+        status: 302,
+        headers: { Location: target, "Cache-Control": MEDIA_CACHE },
+      });
       return redirect;
     }
     try {
       const buf = await getR2Buffer(m.storageKey);
       if (buf) {
         headers["Content-Length"] = String(buf.length);
-        headers["Cache-Control"] = "public, max-age=31536000, immutable";
+        headers["Cache-Control"] = MEDIA_CACHE;
         return new Response(new Uint8Array(buf), { headers });
       }
     } catch {
@@ -125,6 +133,6 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
   }
   if (!m.data) return new Response("Not found", { status: 404 });
   headers["Content-Length"] = String(m.size);
-  headers["Cache-Control"] = "public, max-age=31536000, immutable";
+  headers["Cache-Control"] = MEDIA_CACHE;
   return new Response(new Uint8Array(m.data), { headers });
 }

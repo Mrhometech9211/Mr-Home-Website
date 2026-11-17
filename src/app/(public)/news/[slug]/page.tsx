@@ -13,7 +13,11 @@ import { safeSections } from "@/lib/page-builder";
 import { formatDateTime } from "@/lib/utils";
 import { JsonLd } from "@/components/site/Breadcrumbs";
 
-export const dynamic = "force-dynamic";
+// Public article pages have no request-specific auth or preview data. Cache
+// them at the CDN and regenerate in the background; admin writes invalidate
+// the layout so a publish is visible immediately.
+export const revalidate = 300;
+export const dynamic = "force-static";
 
 type Ctx = { params: Promise<{ slug: string }> };
 

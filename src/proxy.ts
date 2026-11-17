@@ -1,47 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 const SESSION_COOKIE = "mrh_session";
-const isProd = process.env.NODE_ENV === "production";
-
-function securityHeaders(res: NextResponse, isAdmin: boolean, frameable = false) {
-  const csp = [
-    "default-src 'self'",
-    `script-src 'self' 'unsafe-inline'${isProd ? "" : " 'unsafe-eval'"} https://www.googletagmanager.com https://connect.facebook.net`,
-    "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: blob: https:",
-    "media-src 'self' blob: https://res.cloudinary.com https:",
-    "font-src 'self' data:",
-    // Direct-to-R2 browser PUTs go to the storage endpoint (https in prod).
-    // Dev additionally allows loopback http so the local R2 emulator works.
-    "connect-src 'self' https:" + (isProd ? "" : " http://127.0.0.1:* http://localhost:*"),
-    // 'self' is required: the visual builder renders its live canvas in a
-    // same-origin iframe (/preview/pages/<id>, /preview/projects/<id>).
-    // youtube-nocookie is what our own video helper emits for YouTube links
-    // (see embedUrl in lib/page-builder.ts); without it every video section is
-    // refused by the browser while youtube.com alone would never be requested.
-    "frame-src 'self' https://maps.google.com https://www.google.com https://www.youtube.com https://www.youtube-nocookie.com https://player.vimeo.com",
-    "worker-src 'self' blob:",
-    "object-src 'none'",
-    "base-uri 'self'",
-    "form-action 'self'",
-    // Only the private /preview/* canvas may be framed, and only by this site:
-    // the visual builder mounts it in a same-origin iframe. Everything else
-    // stays unframeable (clickjacking protection).
-    `frame-ancestors ${frameable ? "'self'" : "'none'"}`,
-    ...(isProd ? ["upgrade-insecure-requests"] : []),
-  ].join("; ");
-  res.headers.set("Content-Security-Policy", csp);
-  res.headers.set("X-Content-Type-Options", "nosniff");
-  // DENY on /api/media made the admin's document viewer show
-  // "refused to connect"; same-origin framing is safe for our own files.
-  res.headers.set("X-Frame-Options", frameable ? "SAMEORIGIN" : "DENY");
-  res.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
-  res.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()");
-  res.headers.set("Cross-Origin-Opener-Policy", "same-origin");
-  if (isProd) res.headers.set("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload");
-  if (isAdmin) res.headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
-  return res;
-}
 
 export function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
@@ -70,20 +29,28 @@ export function proxy(req: NextRequest) {
       const url = req.nextUrl.clone();
       url.pathname = "/admin/login";
       url.searchParams.set("next", pathname);
-      return securityHeaders(NextResponse.redirect(url), true);
+      return NextResponse.redirect(url);
     }
   }
 
-  const frameable =
-    pathname.startsWith("/preview/") ||
-    pathname.startsWith("/api/media/") ||
-    pathname.startsWith("/api/brochures/");
-  return securityHeaders(NextResponse.next(), isAdmin || pathname.startsWith("/api/admin"), frameable);
+  return NextResponse.next();
 }
 
 export const config = {
-  // The local disk upload streams a raw body; if the proxy buffered it, Next's
-  // proxyClientMaxBodySize (64 MB) would silently truncate large videos. Auth
-  // is enforced inside the route, so it is safe to skip the proxy here.
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|textures/|images/|brand/|api/admin/media/local-upload).*)"],
+  // Public pages, sitemap/robots, images and other crawler hits are served
+  // without starting this proxy: their security/cache headers are in
+  // next.config.ts. Only routes that genuinely need CSRF or the admin cookie
+  // gate run here.
+  //
+  // The local disk upload is excluded because it streams a raw body; if the
+  // proxy buffered it, Next's proxyClientMaxBodySize (64 MB) would truncate
+  // large videos. Auth is enforced inside that route.
+  matcher: [
+    "/admin/:path*",
+    "/admin",
+    "/preview/:path*",
+    // All API routes except the raw-body local upload. That endpoint streams
+    // multipart video directly and must never be buffered by the proxy.
+    "/((?!api/admin/media/local-upload(?:/|$))api/.*)",
+  ],
 };

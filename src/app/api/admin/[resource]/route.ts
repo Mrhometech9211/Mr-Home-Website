@@ -5,6 +5,7 @@ import { ApiError, getIp, handle, json, parseIntParam, readJson } from "@/lib/ap
 import { hashPassword, requireUser } from "@/lib/auth";
 import { audit } from "@/lib/audit";
 import { assertPublishFlags, buildSchema, columnsOf, getResource, resolveCustomRoleName, toRow } from "@/lib/resources-server";
+import { revalidateResource } from "@/lib/revalidate-public";
 
 type Ctx = { params: Promise<{ resource: string }> };
 
@@ -92,5 +93,6 @@ export const POST = handle<Ctx>(async (req, ctx) => {
   delete created.passwordHash;
   if (resource === "leads") await db.insert(leadActivities).values({ leadId: created.id as number, userId: me.id, userName: me.name, type: "created", description: "Lead created manually" });
   await audit({ user: me, action: `${res.def.singular.toLowerCase()}.created`, entity: resource, entityId: created.id as number, metadata: { name: created.name ?? created.title ?? created.label ?? created.key }, ip: getIp(req) });
+  revalidateResource(resource);
   return json({ data: created }, { status: 201 });
 });

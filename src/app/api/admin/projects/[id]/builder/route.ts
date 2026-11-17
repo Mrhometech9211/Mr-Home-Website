@@ -5,6 +5,7 @@ import { projects } from "@/db/schema";
 import { ApiError, getIp, handle, json, readJson } from "@/lib/api";
 import { requireUser } from "@/lib/auth";
 import { audit } from "@/lib/audit";
+import { revalidatePublicContent } from "@/lib/revalidate-public";
 import { safeSections, sectionsSchema, validateForPublish, type BuilderSection } from "@/lib/page-builder";
 import { projectSeedSections } from "@/lib/project-template";
 
@@ -76,6 +77,7 @@ export const POST = handle(async (req: Request, { params }: { params: Promise<{ 
     await loadProject(projectId);
     await db.update(projects).set({ builderDraft: [], builderPublished: [] }).where(eq(projects.id, projectId));
     await audit({ user, action: "project.builder_reset", entity: "projects", entityId: projectId, ip: getIp(req) });
+    revalidatePublicContent();
     return json({ ok: true });
   }
 
@@ -90,5 +92,6 @@ export const POST = handle(async (req: Request, { params }: { params: Promise<{ 
   }
   await db.update(projects).set({ builderPublished: project.builderDraft }).where(eq(projects.id, projectId));
   await audit({ user, action: "project.builder_published", entity: "projects", entityId: projectId, metadata: { sections: draft.length }, ip: getIp(req) });
+  revalidatePublicContent();
   return json({ ok: true });
 });

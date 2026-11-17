@@ -4,7 +4,6 @@ import { notFound } from "next/navigation";
 import { ArrowRight, MapPin } from "lucide-react";
 import Link from "next/link";
 import { getCitiesByMarket, getMarketBySlug, getPublishedMarkets, getPublishedProjects, getSettings } from "@/lib/content";
-import { getCurrentUser } from "@/lib/auth";
 import { buildMetadata, resolvePageSeo } from "@/lib/seo";
 import { buildWhatsAppLink, fillTemplate } from "@/lib/whatsapp";
 import { Breadcrumbs, JsonLd } from "@/components/site/Breadcrumbs";
@@ -16,7 +15,8 @@ import { PageBuilder } from "@/components/site/PageBuilder";
 import { safeSections } from "@/lib/page-builder";
 import { webPageJsonLd } from "@/lib/structured-data";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 300;
+export const dynamic = "force-static";
 type Params = Promise<{ slug: string }>;
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
@@ -28,8 +28,7 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
 
 export default async function MarketPage({ params }: { params: Params }) {
   const { slug } = await params;
-  const user = await getCurrentUser();
-  const [market, settings] = await Promise.all([getMarketBySlug(slug, !!user), getSettings()]);
+  const [market, settings] = await Promise.all([getMarketBySlug(slug), getSettings()]);
   if (!market) notFound();
   const [projects, markets, marketCities] = await Promise.all([getPublishedProjects({ market: market.slug }), getPublishedMarkets(), getCitiesByMarket(market.id)]);
   const wa = buildWhatsAppLink(settings.whatsapp, fillTemplate(settings.whatsappMarketMessage, { market: market.name }));

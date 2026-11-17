@@ -6,6 +6,7 @@ import { requireUser } from "@/lib/auth";
 import { audit } from "@/lib/audit";
 import { safeFilename } from "@/lib/media-validation";
 import { BROCHURE_MAX_BYTES, BROCHURE_MAX_LABEL } from "@/lib/upload-limits";
+import { revalidatePublicContent } from "@/lib/revalidate-public";
 
 // Legacy in-band replacement only; large brochures use direct-to-R2.
 const MAX_BROCHURE_BYTES = BROCHURE_MAX_BYTES;
@@ -131,6 +132,7 @@ export const PATCH = handle(async (req, ctx: Ctx) => {
       : { allowDownload: row.allowDownload },
     ip: getIp(req),
   });
+  revalidatePublicContent();
   return json({ data: row });
 });
 
@@ -158,5 +160,6 @@ export const DELETE = handle(async (req, ctx: Ctx) => {
     metadata: { originalName: prior[0].originalName, projectId: prior[0].projectId },
     ip: getIp(req),
   });
+  revalidatePublicContent();
   return json({ ok: true });
 });

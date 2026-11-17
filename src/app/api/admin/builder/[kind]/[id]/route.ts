@@ -2,6 +2,7 @@ import { z } from "zod";
 import { ApiError, getIp, handle, json, readJson } from "@/lib/api";
 import { requireUser } from "@/lib/auth";
 import { audit } from "@/lib/audit";
+import { revalidatePublicContent } from "@/lib/revalidate-public";
 import { sectionsSchema } from "@/lib/page-builder";
 import {
   isContentBuilderKind,
@@ -82,11 +83,13 @@ export const POST = handle(async (req: Request, { params }: Params) => {
     await loadContentBuilder(kind, id);
     await resetContentBuilder(kind, id);
     await audit({ user, action: `content.builder_reset`, entity: kind === "market" ? "markets" : "news", entityId: id, ip: getIp(req) });
+    revalidatePublicContent();
     return json({ ok: true });
   }
 
   const user = await requireUser(meta.publish);
   const published = await publishContentDraft(kind, id);
   await audit({ user, action: `content.builder_published`, entity: kind === "market" ? "markets" : "news", entityId: id, metadata: { sections: published.length }, ip: getIp(req) });
+  revalidatePublicContent();
   return json({ ok: true });
 });

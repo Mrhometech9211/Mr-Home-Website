@@ -67,7 +67,7 @@ export const RESOURCES: Record<string, ResourceDef> = {
   news: {
     key: "news", label: "News", singular: "Article", icon: "news", read: "news.read", write: "news.write",
     publishable: true, featurable: true, archivable: true, duplicatable: true,
-    previewPath: (r) => `/news/${r.slug}`,
+    previewPath: (r) => (r.published ? `/news/${r.slug}` : `/preview/news/${r.id}`),
     listColumns: ["title", "category", "marketId", "publishedAt", "featured", "published", "archived"],
     searchFields: ["title", "excerpt", "slug"],
     defaultSort: { column: "createdAt", dir: "desc" },
@@ -101,7 +101,7 @@ export const RESOURCES: Record<string, ResourceDef> = {
   projects: {
     key: "projects", label: "Projects", singular: "Project", icon: "building", read: "projects.read", write: "projects.write",
     publishable: true, featurable: true, archivable: true, orderable: true, duplicatable: true,
-    previewPath: (r) => `/projects/${r.slug}`,
+    previewPath: (r) => (r.published ? `/projects/${r.slug}` : `/preview/projects/${r.id}`),
     listColumns: ["name", "purpose", "marketId", "city", "status", "areaValue", "price", "featured", "published", "updatedAt"],
     searchFields: ["name", "city", "developer", "slug"],
     defaultSort: { column: "order", dir: "asc" },
@@ -162,7 +162,7 @@ export const RESOURCES: Record<string, ResourceDef> = {
   markets: {
     key: "markets", label: "Markets", singular: "Market", icon: "globe", read: "markets.read", write: "markets.write",
     publishable: true, featurable: true, orderable: true, duplicatable: true,
-    previewPath: (r) => `/markets/${r.slug}`,
+    previewPath: (r) => (r.published ? `/markets/${r.slug}` : `/preview/markets/${r.id}`),
     listColumns: ["flag", "name", "countryCode", "latitude", "longitude", "featured", "published", "order"],
     searchFields: ["name", "slug", "countryCode"],
     defaultSort: { column: "order", dir: "asc" },
@@ -277,7 +277,7 @@ export const RESOURCES: Record<string, ResourceDef> = {
   },
   legal: {
     key: "legal", label: "Legal Pages", singular: "Legal Page", icon: "scale", read: "legal.read", write: "legal.write", publishable: true,
-    previewPath: (r) => `/${r.slug}`,
+    previewPath: (r) => (r.status === "published" ? `/${r.slug}` : `/preview/pages/${r.id}`),
     listColumns: ["title", "slug", "published", "updatedAt"],
     searchFields: ["title", "slug"],
     defaultSort: { column: "title", dir: "asc" },

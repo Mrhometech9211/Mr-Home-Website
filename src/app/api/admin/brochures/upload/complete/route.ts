@@ -2,6 +2,7 @@ import { z } from "zod";
 import { ApiError, handle, json, readJson } from "@/lib/api";
 import { requireUser } from "@/lib/auth";
 import { completeBrochureUpload } from "@/lib/admin-upload-flow";
+import { revalidatePublicContent } from "@/lib/revalidate-public";
 
 /** Finalize a brochure direct-to-R2 upload (PDF magic verified in the object). */
 const bodySchema = z.object({
@@ -19,5 +20,6 @@ export const POST = handle(async (req) => {
   const body = bodySchema.safeParse(await readJson(req));
   if (!body.success) throw new ApiError(400, "Invalid completion request");
   await completeBrochureUpload(me.id, body.data.id, { multipart: body.data.multipart });
+  revalidatePublicContent();
   return json({ ok: true, data: { id: body.data.id, url: `/api/brochures/${body.data.id}` } });
 });

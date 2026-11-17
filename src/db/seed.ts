@@ -86,6 +86,9 @@ let seedPromise: Promise<boolean> | null = null;
 /** Lazily seeds the database once per server process if it is empty. */
 export async function ensureSeeded() {
   await initDb(); // safe to call repeatedly — resolves once per process
+  // Production builds read published data to prerender ISR pages, but must not
+  // insert seed/forward-fix rows into the live database.
+  if (process.env.NEXT_PHASE === "phase-production-build" && process.env.DATABASE_URL?.trim()) return false;
   if (!seedPromise) {
     seedPromise = runSeed()
       .then(async (seeded) => {

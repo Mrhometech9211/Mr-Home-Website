@@ -45,6 +45,7 @@ export function PlannerAlarmWatcher({ enabled }: { enabled: boolean }) {
   const ringTimer = useRef<number | null>(null);
   const itemsRef = useRef<Item[]>([]);
   const activeRef = useRef<Item | null>(null);
+  const lastLoadRef = useRef(0);
 
   const stopRinging = useCallback(() => {
     if (ringTimer.current !== null) {
@@ -80,10 +81,15 @@ export function PlannerAlarmWatcher({ enabled }: { enabled: boolean }) {
     if (readPref(SOUND_KEY) && item.alarmEnabled) ring();
   }, [ring]);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (force = false) => {
     if (!enabled) return;
+    const now = Date.now();
+    // Focus and visibility events can fire together. Keep at most one request
+    // per minute without delaying the initial load.
+    if (!force && now - lastLoadRef.current < 55_000) return;
+    lastLoadRef.current = now;
     try {
-      const res = await fetch("/api/admin/planner", { credentials: "same-origin", cache: "no-store" });
+      const res = await fetch("/api/admin/planner?alarm=1", { credentials: "same-origin", cache: "no-store" });
       if (!res.ok) return;
       const payload = (await res.json()) as { data?: Item[] };
       const items = Array.isArray(payload.data) ? payload.data : [];
@@ -137,18 +143,16 @@ export function PlannerAlarmWatcher({ enabled }: { enabled: boolean }) {
   useEffect(() => {
     if (!enabled) return;
     // Deferred so the first poll cannot set state inside the effect body.
-    const kick = window.setTimeout(() => void load(), 0);
+    const kick = window.setTimeout(() => void load(true), 0);
     const timer = window.setInterval(() => {
       if (document.visibilityState === "visible") void load();
-    }, 30_000);
-    const onFocus = () => void load();
-    window.addEventListener("focus", onFocus);
-    document.addEventListener("visibilitychange", onFocus);
+    }, 60_000);
+    const onVisible = () => { if (document.visibilityState === "visible") void load(); };
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
       window.clearTimeout(kick);
       window.clearInterval(timer);
-      window.removeEventListener("focus", onFocus);
-      document.removeEventListener("visibilitychange", onFocus);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, [enabled, load]);
 

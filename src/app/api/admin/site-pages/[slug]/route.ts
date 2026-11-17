@@ -6,6 +6,7 @@ import { db } from "@/db";
 import { sitePages, type SitePageContent } from "@/db/schema";
 import { audit } from "@/lib/audit";
 import { getBuiltinPage, getBuiltinPageAdminData, PREVIEW_COOKIE, pruneContent } from "@/lib/site-pages";
+import { revalidatePublicContent } from "@/lib/revalidate-public";
 
 export const dynamic = "force-dynamic";
 
@@ -95,10 +96,13 @@ export const PUT = handle(async (req: Request, ctx: Ctx) => {
   return json({ ok: true, savedAt: new Date().toISOString(), content, normalization: report });
 });
 
+/** Built-in pages whose public route is static use the private preview route. */
+const PREVIEW_ROUTE_KEYS = new Set(["home", "why-mr-home", "markets", "list-your-property"]);
+
 /**
  * publish  — copies the draft snapshot to published and makes it live.
  * discard  — resets the draft back to the published snapshot.
- * preview  — allows this admin to see the draft on the public URL for 1 hour.
+ * preview  — allows this admin to see the draft for 1 hour (private URL).
  * exit-preview — stops showing drafts to this browser.
  */
 export const POST = handle(async (req: Request, ctx: Ctx) => {
@@ -108,7 +112,8 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
 
   if (action === "preview" || action === "exit-preview") {
     const user = await requireUser("content.read");
-    const res = json({ ok: true, url: page.path });
+    const previewUrl = PREVIEW_ROUTE_KEYS.has(page.key) ? `/preview/site/${page.key}` : page.path;
+    const res = json({ ok: true, url: previewUrl });
     if (action === "preview") {
       res.cookies.set(PREVIEW_COOKIE, page.key, {
         httpOnly: true,
@@ -138,6 +143,7 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
       .set({ published: content, publishedAt: new Date(), updatedAt: new Date() })
       .where(eq(sitePages.slug, page.key));
     await audit({ user, action: "site_page.published", entity: "site_pages", entityId: page.key, ip: getIp(req) });
+    revalidatePublicContent();
     return json({ ok: true, publishedAt: new Date().toISOString() });
   }
 

@@ -244,16 +244,27 @@ export async function isPagePreview(key: string): Promise<boolean> {
   }
 }
 
-/** The sparse override snapshot the public site should use for a built-in page. */
-export async function getSitePageContent(key: string): Promise<SitePageContent> {
+async function readSitePageContent(key: string, includeDraft: boolean): Promise<SitePageContent> {
   const page = getBuiltinPage(key);
   if (!page) return EMPTY_CONTENT;
   await initDb();
   const rows = await db.select().from(sitePages).where(eq(sitePages.slug, key)).limit(1);
   const row = rows[0];
   if (!row) return EMPTY_CONTENT;
-  const preview = await isPagePreview(key);
-  return asContent(preview ? row.draft : row.published);
+  return asContent(includeDraft ? row.draft : row.published);
+}
+
+/** Preview-aware read used only by admin preview surfaces. */
+export async function getSitePageContent(key: string): Promise<SitePageContent> {
+  return readSitePageContent(key, await isPagePreview(key));
+}
+
+/**
+ * Published-only read for public static/ISR routes. It deliberately never
+ * touches cookies or auth, so it cannot force a page to render dynamically.
+ */
+export async function getPublishedSitePageContent(key: string): Promise<SitePageContent> {
+  return readSitePageContent(key, false);
 }
 
 /** Published (or, for an authorised preview, draft) SEO overrides for a path. */
@@ -261,6 +272,14 @@ export async function getSitePageSeo(path: string): Promise<SitePageSeo | null> 
   const key = pageKeyFromPath(path);
   if (!key) return null;
   const content = await getSitePageContent(key);
+  return Object.keys(content.seo ?? {}).length ? content.seo : null;
+}
+
+/** Published-only SEO overrides for static/ISR public routes. */
+export async function getPublishedSitePageSeo(path: string): Promise<SitePageSeo | null> {
+  const key = pageKeyFromPath(path);
+  if (!key) return null;
+  const content = await getPublishedSitePageContent(key);
   return Object.keys(content.seo ?? {}).length ? content.seo : null;
 }
 
@@ -290,9 +309,9 @@ export function mergeSections(bases: PageSectionBase[], patches: Record<string, 
   return bases.map((base) => mergeSection(base, findPatch(patches, base)));
 }
 
-/** Merge published (or previewed draft) overrides onto Content section rows. */
-export async function applyPageOverrides<T extends typeof pageSections.$inferSelect>(page: string, rows: T[]): Promise<T[]> {
-  const content = await getSitePageContent(page);
+/** Merge published (or, on preview surfaces, draft) overrides onto Content section rows. */
+export async function applyPageOverrides<T extends typeof pageSections.$inferSelect>(page: string, rows: T[], preview = false): Promise<T[]> {
+  const content = preview ? await getSitePageContent(page) : await getPublishedSitePageContent(page);
   const bases = rows.map(toBase);
   const merged = mergeSections(bases, content.sections ?? {});
   return merged
@@ -517,8 +536,10 @@ export async function listBuiltinPageStatus() {
   });
 }
 
-/** Merged List Your Property sections for the public page. */
-export async function getLypSections(settings: SiteSettings): Promise<PageSectionBase[]> {
-  const content = await getSitePageContent("list-your-property");
+/** Merged List Your Property sections for the public page (or preview route). */
+export async function getLypSections(settings: SiteSettings, preview = false): Promise<PageSectionBase[]> {
+  const content = preview
+    ? await getSitePageContent("list-your-property")
+    : await getPublishedSitePageContent("list-your-property");
   return mergeSections(buildLypSections(settings), content.sections);
 }

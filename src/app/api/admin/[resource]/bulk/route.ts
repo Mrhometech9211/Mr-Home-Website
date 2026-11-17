@@ -7,6 +7,7 @@ import { audit } from "@/lib/audit";
 import { PUBLISHABLE_RESOURCES, columnsOf, getResource } from "@/lib/resources-server";
 import { effectiveHas } from "@/lib/permissions";
 import { assertPublishFlags } from "@/lib/resources-server";
+import { revalidateResource } from "@/lib/revalidate-public";
 
 type Ctx = { params: Promise<{ resource: string }> };
 
@@ -72,5 +73,6 @@ export const POST = handle<Ctx>(async (req, ctx) => {
     }
   }
   await audit({ user: me, action: `${res.def.singular.toLowerCase()}.bulk_${action}`, entity: resource, metadata: { ids }, ip: getIp(req) });
+  revalidateResource(resource);
   return json({ ok: true, count: ids.length });
 });

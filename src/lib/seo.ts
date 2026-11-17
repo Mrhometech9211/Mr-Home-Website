@@ -2,7 +2,7 @@ import "server-only";
 import type { Metadata } from "next";
 import { getSeoEntry, getSettings } from "./content";
 import { absoluteSiteUrl } from "./site";
-import { getSitePageSeo } from "./site-pages";
+import { getPublishedSitePageSeo, getSitePageSeo } from "./site-pages";
 
 export type PageSeoFallback = {
   title: string;
@@ -34,9 +34,13 @@ export type ResolvedPageSeo = {
 export async function resolvePageSeo(
   path: string,
   fallback: PageSeoFallback,
-  options?: { forceNoIndex?: boolean },
+  options?: { forceNoIndex?: boolean; preview?: boolean },
 ): Promise<ResolvedPageSeo> {
-  const [settings, entry, pageSeo] = await Promise.all([getSettings(), getSeoEntry(path), getSitePageSeo(path)]);
+  const [settings, entry, pageSeo] = await Promise.all([
+    getSettings(),
+    getSeoEntry(path),
+    options?.preview ? getSitePageSeo(path) : getPublishedSitePageSeo(path),
+  ]);
   const title = (pageSeo?.title || entry?.title || fallback.title).trim() || settings.brandName;
   const description = (
     pageSeo?.description ||
@@ -66,7 +70,7 @@ export async function resolvePageSeo(
 export async function buildMetadata(
   path: string,
   fallback: PageSeoFallback,
-  options?: { forceNoIndex?: boolean },
+  options?: { forceNoIndex?: boolean; preview?: boolean },
 ): Promise<Metadata> {
   const seo = await resolvePageSeo(path, fallback, options);
   const settings = await getSettings();

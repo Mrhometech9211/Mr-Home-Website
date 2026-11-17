@@ -26,14 +26,14 @@ export default async function NewsPage({ searchParams }: { searchParams: SP }) {
     getPublishedNews({ market: sp.market, category: sp.category }),
     getPublishedMarkets(),
     getNewsCategories(),
-    getSections("news"),
+    getSections("news", true),
   ]);
   const hero = sections.find((s) => s.key === "hero");
   const seo = await resolvePageSeo("/news", {
     title: "News & Market Insights",
     description: "Market reports, investment guides and updates from MR.HOME across 10 global real estate markets.",
     image: hero?.image,
-  });
+  }, { preview: true });
   const pageLd = webPageJsonLd({ path: "/news", canonical: seo.canonical, type: "CollectionPage", name: seo.title, description: seo.description });
 
   return (

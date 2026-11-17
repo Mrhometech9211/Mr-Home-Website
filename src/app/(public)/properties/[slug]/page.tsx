@@ -4,7 +4,6 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { BedDouble, Bath, Maximize, MapPin, Building2, KeyRound, Sofa, CalendarClock, Check, Share2 } from "lucide-react";
 import { getPropertyBySlug, getPublishedMarkets, getPublishedProperties, getSettings } from "@/lib/content";
-import { getCurrentUser } from "@/lib/auth";
 import { buildMetadata, resolvePageSeo } from "@/lib/seo";
 import { propertyJsonLd, webPageJsonLd } from "@/lib/structured-data";
 import { buildWhatsAppLink, fillTemplate } from "@/lib/whatsapp";
@@ -17,7 +16,10 @@ import { formatArea } from "@/lib/area";
 import { InquiryForm } from "@/components/site/InquiryForm";
 import { Gallery } from "@/app/(public)/projects/[slug]/Gallery";
 
-export const dynamic = "force-dynamic";
+// Listings are public. Cache at the CDN, revalidate in the background, and
+// invalidate immediately from admin publish/update routes.
+export const revalidate = 300;
+export const dynamic = "force-static";
 
 type Params = Promise<{ slug: string }>;
 
@@ -30,7 +32,6 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
 
 export default async function PropertyPage({ params }: { params: Params }) {
   const { slug } = await params;
-  const user = await getCurrentUser();
   const property = await getPropertyBySlug(slug);
   if (!property) notFound();
   const [settings, markets, related] = await Promise.all([

@@ -6,7 +6,6 @@ import { BedDouble, Bath, Ruler, CalendarClock, Building2, MapPin, TrendingUp, F
 import { getProjectBySlug, getPublishedMarkets, getPublishedProjects, getSettings, getActiveBrochureForProject } from "@/lib/content";
 import { BrochureGate } from "@/components/site/BrochureGate";
 import { ProjectPricing } from "@/components/site/ProjectPricing";
-import { getCurrentUser } from "@/lib/auth";
 import { buildMetadata, resolvePageSeo } from "@/lib/seo";
 import { projectJsonLd, webPageJsonLd } from "@/lib/structured-data";
 import { buildWhatsAppLink, fillTemplate } from "@/lib/whatsapp";
@@ -22,7 +21,8 @@ import { PageBuilder } from "@/components/site/PageBuilder";
 import { safeSections } from "@/lib/page-builder";
 import { ProjectVerification } from "@/components/site/ProjectVerification";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 300;
+export const dynamic = "force-static";
 
 type Params = Promise<{ slug: string }>;
 
@@ -35,8 +35,7 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
 
 export default async function ProjectPage({ params }: { params: Params }) {
   const { slug } = await params;
-  const user = await getCurrentUser();
-  const [project, settings] = await Promise.all([getProjectBySlug(slug, !!user), getSettings()]);
+  const [project, settings] = await Promise.all([getProjectBySlug(slug), getSettings()]);
   if (!project) notFound();
   const isPreview = !project.published || project.archived;
   const [related, markets, brochure] = await Promise.all([

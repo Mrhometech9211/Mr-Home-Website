@@ -13,12 +13,9 @@ import { applyPageOverrides, getBuiltinPage } from "./site-pages";
 export type CityFacet = { name: string; marketId: number | null };
 
 export const getSettings = cache(async (): Promise<SiteSettings> => {
-  // Static pages (`/_not-found`, `/robots.txt`) are rendered during `next build`.
-  // Never let a production build connect to, migrate, or seed the live database;
-  // use defaults for build-time metadata instead. Runtime is unaffected.
-  if (process.env.NEXT_PHASE === "phase-production-build") {
-    return mergeSettings(null);
-  }
+  // `initDb()` is read-only during a production build (it skips migrations and
+  // seeding), so prerendered static pages can use the real published settings.
+  // Any build-time connection failure still falls back to defaults here.
   try {
     await initDb();
     await ensureSeeded();
@@ -35,12 +32,12 @@ export const getNavigation = cache(async (location: "header" | "footer") => {
   return db.select().from(navigationItems).where(and(eq(navigationItems.location, location), eq(navigationItems.visible, true))).orderBy(asc(navigationItems.order));
 });
 
-export const getSections = cache(async (page: string) => {
+export const getSections = cache(async (page: string, preview = false) => {
   await ensureSeeded();
   const rows = await db.select().from(pageSections).where(eq(pageSections.page, page)).orderBy(asc(pageSections.order));
-  // Built-in pages may carry admin draft/published field overrides. Everything
-  // else keeps the original enabled-only behaviour.
-  if (getBuiltinPage(page)) return applyPageOverrides(page, rows);
+  // Public pages read the published snapshot only; preview surfaces opt in
+  // explicitly, which keeps cookies out of static/ISR rendering.
+  if (getBuiltinPage(page)) return applyPageOverrides(page, rows, preview);
   return rows.filter((row) => row.enabled);
 });
 

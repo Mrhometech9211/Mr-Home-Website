@@ -164,6 +164,11 @@ export function getR2(): R2Config | null {
     // R2 accepts both styles; the local emulator (127.0.0.1/localhost) only
     // implements path-style, so force it there and keep R2's default elsewhere.
     forcePathStyle: /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/i.test(cfg.endpoint),
+    // Presigned PUTs sign a URL before the browser supplies the body. Letting
+    // the SDK add a checksum here would sign the empty body's CRC32, and R2
+    // would then reject the real upload with a checksum mismatch.
+    requestChecksumCalculation: "WHEN_REQUIRED",
+    responseChecksumValidation: "WHEN_REQUIRED",
     credentials: { accessKeyId: cfg.accessKeyId, secretAccessKey: cfg.secretAccessKey },
   });
   cached = { client, bucket: cfg.bucket, publicUrl: cfg.publicUrl };
