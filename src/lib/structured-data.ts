@@ -80,14 +80,25 @@ export function webPageJsonLd(input: {
   };
 }
 
-/** Only statuses explicitly stored in the CMS map to a schema.org availability. */
-function availabilityForProject(status: string | null | undefined, verifiedAt: Date | string | null | undefined) {
-  // A status alone is not enough: only claim availability when a verification
-  // check date is recorded for the listing.
-  if (!verifiedAt) return undefined;
-  if (status === "available" || status === "ready") return "https://schema.org/InStock";
-  if (status === "sold-out") return "https://schema.org/SoldOut";
-  return undefined;
+/** True only for a stored date that parses to a real instant. */
+function isValidVerificationDate(value: Date | string | null | undefined): boolean {
+  if (value == null || value === "") return false;
+  const date = value instanceof Date ? value : new Date(value);
+  return !Number.isNaN(date.getTime());
+}
+
+/**
+ * Availability is a manual claim: the admin must tick "In Stock confirmed" AND
+ * the project must carry a valid Verification Date. Neither on its own is enough,
+ * and a status value never invents availability.
+ */
+function availabilityForProject(
+  confirmedInStock: boolean | null | undefined,
+  verifiedAt: Date | string | null | undefined,
+) {
+  if (confirmedInStock !== true) return undefined;
+  if (!isValidVerificationDate(verifiedAt)) return undefined;
+  return "https://schema.org/InStock";
 }
 
 /**
@@ -142,7 +153,7 @@ export function projectJsonLd(
 ) {
   const url = options.canonical ? absoluteSiteUrl(options.canonical) : absoluteSiteUrl(`/projects/${p.slug}`);
   const price = confirmedProjectPrice(p);
-  const availability = availabilityForProject(p.status, p.verificationCheckedAt);
+  const availability = availabilityForProject(p.inStockConfirmed, p.verificationCheckedAt);
   const image = [p.coverImage, ...(p.gallery ?? [])].filter((i): i is string => !!i).map(absoluteSiteUrl);
   const address = postalAddress(p);
   const bedrooms = integerOrNull(p.bedrooms);
@@ -162,6 +173,19 @@ export function projectJsonLd(
     ...(size ? { floorSize: size } : {}),
   };
   const hasPropertyFacts = Boolean(address || geo || bedrooms || bathrooms || size);
+  // One Offer carries whatever is verified — a price, an availability, or both.
+  // An unverified price is never invented to make the Offer valid.
+  const offers =
+    price != null || availability
+      ? {
+          "@type": "Offer",
+          ...(price != null
+            ? { price, ...(p.currency ? { priceCurrency: p.currency } : {}) }
+            : {}),
+          ...(availability ? { availability } : {}),
+          url,
+        }
+      : undefined;
   return {
     "@context": "https://schema.org",
     "@type": "RealEstateListing",
@@ -172,17 +196,7 @@ export function projectJsonLd(
     description: options.description?.trim() || p.shortDescription || p.description || undefined,
     ...(image.length ? { image } : {}),
     ...(hasPropertyFacts ? { about: property } : {}),
-    ...(price
-      ? {
-          offers: {
-            "@type": "Offer",
-            price,
-            ...(p.currency ? { priceCurrency: p.currency } : {}),
-            ...(availability ? { availability } : {}),
-            url,
-          },
-        }
-      : {}),
+    ...(offers ? { offers } : {}),
     ...(p.updatedAt ? { dateModified: new Date(p.updatedAt).toISOString() } : {}),
     provider: { "@id": organizationId() },
   };

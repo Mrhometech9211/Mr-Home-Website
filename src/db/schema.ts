@@ -226,6 +226,8 @@ export const projects = pgTable(
     verificationSource: text("verification_source"),
     verificationReviewer: text("verification_reviewer"),
     verificationCheckedAt: timestamp("verification_checked_at", { withTimezone: true }),
+    /** Manual admin confirmation that the project is currently in stock. */
+    inStockConfirmed: boolean("in_stock_confirmed").notNull().default(false),
     featured: boolean("featured").notNull().default(false),
     published: boolean("published").notNull().default(false),
     archived: boolean("archived").notNull().default(false),

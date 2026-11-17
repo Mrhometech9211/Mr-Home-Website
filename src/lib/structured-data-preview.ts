@@ -77,7 +77,7 @@ export async function buildProjectPreview(id: number): Promise<StructuredDataPre
     path,
     jsonLd: combine([pageLd, listingLd]),
     draft: !project.published || project.archived,
-    note: "Offer price appears only when a price check date (or a confirming price verification check) is stored. Availability appears only with a verification date.",
+    note: "Offer price appears only when a price check date (or a confirming price verification check) is stored. Availability appears only when In Stock confirmed is ticked and a valid Verification Date is stored.",
   };
 }
 

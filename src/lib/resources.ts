@@ -139,6 +139,7 @@ export const RESOURCES: Record<string, ResourceDef> = {
       { name: "verificationSource", label: "Verification Source", type: "text", group: "Verification", width: "half" },
       { name: "verificationReviewer", label: "Verified By", type: "text", group: "Verification", width: "half" },
       { name: "verificationCheckedAt", label: "Verification Date", type: "datetime", group: "Verification", width: "half", help: "Required before the listing may claim availability in structured data." },
+      { name: "inStockConfirmed", label: "In Stock confirmed", type: "boolean", group: "Verification", width: "half", help: "Tick only when a person confirmed the project is currently in stock. Structured data also requires a Verification Date." },
       { name: "bedrooms", label: "Bedrooms", type: "text", group: "Details", width: "third" },
       { name: "bathrooms", label: "Bathrooms", type: "text", group: "Details", width: "third" },
       { name: "areaValue", label: "Area", type: "number", group: "Details", width: "third", help: "Numeric value only — pick the unit next to it." },

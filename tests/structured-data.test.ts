@@ -66,6 +66,95 @@ test("a non-price or unconfirmed check does not unlock the Offer price", () => {
   assert.equal(ld.offers, undefined);
 });
 
+const IN_STOCK = "https://schema.org/InStock";
+
+test("a verification date alone never emits availability", () => {
+  const ld = projectJsonLd(
+    project({ inStockConfirmed: false, verificationCheckedAt: new Date("2026-01-01T00:00:00Z") }) as never,
+  ) as Json;
+  assert.equal(ld.offers, undefined);
+});
+
+test("a project stored before the In Stock field behaves as not confirmed", () => {
+  const legacy = project({ verificationCheckedAt: new Date("2026-01-01T00:00:00Z") });
+  assert.equal("inStockConfirmed" in legacy, false);
+  const ld = projectJsonLd(legacy as never) as Json;
+  assert.equal(ld.offers, undefined);
+});
+
+test("ticking In Stock without a verification date emits no availability", () => {
+  const ld = projectJsonLd(project({ inStockConfirmed: true, verificationCheckedAt: null }) as never) as Json;
+  assert.equal(ld.offers, undefined);
+});
+
+test("ticking In Stock with an unparseable date emits no availability", () => {
+  const ld = projectJsonLd(
+    project({ inStockConfirmed: true, verificationCheckedAt: "not-a-date" }) as never,
+  ) as Json;
+  assert.equal(ld.offers, undefined);
+});
+
+test("confirmed In Stock with a valid date emits an availability-only Offer", () => {
+  const ld = projectJsonLd(
+    project({ inStockConfirmed: true, verificationCheckedAt: new Date("2026-01-01T00:00:00Z"), priceCheckedAt: null }) as never,
+  ) as Json;
+  const offers = ld.offers as Json;
+  assert.equal(Array.isArray(offers), false);
+  assert.equal(offers["@type"], "Offer");
+  assert.equal(offers.availability, IN_STOCK);
+  assert.equal(offers.price, undefined);
+  assert.equal(offers.priceCurrency, undefined);
+  assert.equal(offers.url, ld.url);
+});
+
+test("confirmed In Stock must not unlock an unverified price", () => {
+  const ld = projectJsonLd(
+    project({ inStockConfirmed: true, verificationCheckedAt: "2026-01-01" }) as never,
+  ) as Json;
+  const offers = ld.offers as Json;
+  assert.equal(offers.availability, IN_STOCK);
+  assert.equal(offers.price, undefined);
+});
+
+test("verified price and confirmed In Stock share exactly one Offer", () => {
+  const ld = projectJsonLd(
+    project({
+      inStockConfirmed: true,
+      verificationCheckedAt: new Date("2026-01-01T00:00:00Z"),
+      priceCheckedAt: new Date("2026-01-01T00:00:00Z"),
+    }) as never,
+  ) as Json;
+  assert.equal(Array.isArray(ld.offers), false);
+  const offers = ld.offers as Json;
+  assert.equal(offers["@type"], "Offer");
+  assert.equal(offers.price, 500000);
+  assert.equal(offers.priceCurrency, "USD");
+  assert.equal(offers.availability, IN_STOCK);
+});
+
+test("unticking In Stock removes availability without touching the verified price", () => {
+  const ld = projectJsonLd(
+    project({
+      inStockConfirmed: false,
+      verificationCheckedAt: new Date("2026-01-01T00:00:00Z"),
+      priceCheckedAt: new Date("2026-01-01T00:00:00Z"),
+    }) as never,
+  ) as Json;
+  const offers = ld.offers as Json;
+  assert.equal(offers.availability, undefined);
+  assert.equal(offers.price, 500000);
+});
+
+// A sold-out/available status is display data and never becomes availability markup on its own.
+test("project status does not produce availability on its own", () => {
+  for (const status of ["available", "ready", "sold-out"]) {
+    const ld = projectJsonLd(
+      project({ status, inStockConfirmed: false, verificationCheckedAt: new Date("2026-01-01T00:00:00Z") }) as never,
+    ) as Json;
+    assert.equal(ld.offers, undefined, status);
+  }
+});
+
 test("project JSON-LD shares the canonical URL and keeps property facts under about", () => {
   const ld = projectJsonLd(project({ priceCheckedAt: new Date("2026-01-01T00:00:00Z") }) as never, {
     canonical: "https://www.mrhomerealestate.com/projects/test-residence",
