@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Eye, EyeOff, Globe, Plus, RotateCcw, Save, Send, Trash2, Undo2 } from "lucide-react";
 import { api, Badge, Btn, Card, Input, Skeleton, Textarea, labelCls, useToast } from "@/components/admin/ui";
+import { StructuredDataPreview } from "@/components/admin/StructuredDataPreview";
 import { deferInitialLoad } from "@/lib/defer-load";
 
 type Item = { title?: string; description?: string; icon?: string; value?: string; label?: string; image?: string };
@@ -130,6 +131,7 @@ export function SitePageEditor({ slug }: { slug: string }) {
   const [content, setContent] = useState<Content>({ sections: {}, seo: {} });
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
+  const [savedAt, setSavedAt] = useState(0);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -196,6 +198,7 @@ export function SitePageEditor({ slug }: { slug: string }) {
         });
         // The API re-prunes against the base; adopt exactly what was stored.
         setContent({ sections: res.content.sections ?? {}, seo: res.content.seo ?? {} });
+        setSavedAt(Date.now());
         if (!silent) toast("Draft saved — only changed fields were stored; nothing is published yet", "success");
         return true;
       } catch (e) {
@@ -377,6 +380,12 @@ export function SitePageEditor({ slug }: { slug: string }) {
           </label>
         </div>
       </Card>
+
+      <StructuredDataPreview
+        query={`kind=builtin-page&key=${slug}`}
+        title="Page JSON-LD (read-only)"
+        refreshKey={`${savedAt}:${data.updatedAt ?? ""}`}
+      />
 
       <div className="space-y-4">
         {data.liveSections.length === 0 && (

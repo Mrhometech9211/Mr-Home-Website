@@ -3,10 +3,11 @@ import Link from "next/link";
 import Image from "next/image";
 import { ArrowUpRight } from "lucide-react";
 import { getProjectCountsByMarket, getPublishedMarketMetrics, getPublishedMarkets, getSections } from "@/lib/content";
-import { buildMetadata } from "@/lib/seo";
+import { buildMetadata, resolvePageSeo } from "@/lib/seo";
 import { EarthSection } from "@/components/home/EarthSection";
 import { Reveal } from "@/components/site/Reveal";
-import { Breadcrumbs } from "@/components/site/Breadcrumbs";
+import { Breadcrumbs, JsonLd } from "@/components/site/Breadcrumbs";
+import { webPageJsonLd } from "@/lib/structured-data";
 import { MarketMetricsDashboard } from "@/components/markets/MarketMetricsDashboard";
 
 export const dynamic = "force-dynamic";
@@ -19,9 +20,12 @@ export default async function MarketsPage() {
   const [markets, counts, sections, metrics] = await Promise.all([getPublishedMarkets(), getProjectCountsByMarket(), getSections("markets"), getPublishedMarketMetrics()]);
   const hero = sections.find((s) => s.key === "hero");
   const section = { ...(hero ?? {}), id: 0, page: "markets", key: "earth", eyebrow: hero?.eyebrow ?? "Markets", title: hero?.title ?? "Global Presence, Local Expertise", body: hero?.body ?? null, ctaLabel: "Talk to an Advisor", ctaHref: "/contact", subtitle: null, secondaryCtaLabel: null, secondaryCtaHref: null, image: null, video: null, background: null, items: [], order: 0, enabled: true, updatedAt: new Date() };
+  const seo = await resolvePageSeo("/markets", { title: "Global Presence, Local Expertise", description: hero?.body });
+  const pageLd = webPageJsonLd({ path: "/markets", canonical: seo.canonical, type: "CollectionPage", name: seo.title, description: seo.description });
 
   return (
     <>
+      <JsonLd data={pageLd} />
       <div className="bg-space pt-24"><div className="mx-auto max-w-[1400px] px-4 sm:px-6"><Breadcrumbs items={[{ name: "Home", href: "/" }, { name: "Markets", href: "/markets" }]} dark /></div></div>
       <EarthSection section={section} markets={markets} projectCounts={counts} standalone />
       <section className="py-20" aria-labelledby="all-markets">

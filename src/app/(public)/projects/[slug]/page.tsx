@@ -7,8 +7,7 @@ import { getProjectBySlug, getPublishedMarkets, getPublishedProjects, getSetting
 import { BrochureGate } from "@/components/site/BrochureGate";
 import { ProjectPricing } from "@/components/site/ProjectPricing";
 import { getCurrentUser } from "@/lib/auth";
-import { buildMetadata } from "@/lib/seo";
-import { absoluteSiteUrl } from "@/lib/site";
+import { buildMetadata, resolvePageSeo } from "@/lib/seo";
 import { projectJsonLd, webPageJsonLd } from "@/lib/structured-data";
 import { buildWhatsAppLink, fillTemplate } from "@/lib/whatsapp";
 import { formatProjectArea, STATUS_LABELS } from "@/lib/utils";
@@ -55,13 +54,21 @@ export default async function ProjectPage({ params }: { params: Params }) {
     { icon: CalendarClock, label: "Handover", value: project.handover },
     { icon: TrendingUp, label: "Est. ROI", value: project.roi },
   ].filter((f) => f.value);
-  const ld = projectJsonLd(project);
+  const seo = await resolvePageSeo(`/projects/${project.slug}`, {
+    title: project.seoTitle || `${project.name} — ${project.city}, ${project.market?.name ?? project.country}`,
+    description: project.seoDescription || project.shortDescription || project.description?.slice(0, 160),
+    image: project.coverImage,
+  });
+  const ld = projectJsonLd(project, { canonical: seo.canonical, description: seo.description });
   const pageLd = webPageJsonLd({
     path: `/projects/${project.slug}`,
-    name: project.name,
-    description: project.shortDescription || project.description,
-    mainEntityId: `${absoluteSiteUrl(`/projects/${project.slug}`)}#listing`,
+    canonical: seo.canonical,
+    name: seo.title,
+    description: seo.description,
+    mainEntityId: `${seo.canonical}#listing`,
+    dateModified: project.updatedAt ? new Date(project.updatedAt).toISOString() : null,
   });
+  const cityFilterHref = `/projects?market=${project.market?.slug ?? ""}${project.city ? `&city=${encodeURIComponent(project.city)}` : ""}`;
   const crumbs = [{ name: "Home", href: "/" }, { name: "Projects", href: "/projects" }, ...(project.market ? [{ name: project.market.name, href: `/projects?market=${project.market.slug}` }] : []), { name: project.name, href: `/projects/${project.slug}` }];
   // Once an administrator publishes builder sections they replace the legacy
   // body; projects without a builder configuration render exactly as before.
@@ -90,7 +97,7 @@ export default async function ProjectPage({ params }: { params: Params }) {
                 {project.market && <Link href={`/markets/${project.market.slug}`} className="rounded-full border border-white/20 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.14em] text-white/80 hover:border-brand-bright">{project.market.flag} {project.market.name}</Link>}
               </div>
               <h1 className="display mt-5 text-[clamp(2.4rem,5.5vw,4.6rem)]">{project.name}</h1>
-              <p className="mt-4 flex items-center gap-2 text-[15px] text-white/70"><MapPin className="h-4 w-4 text-brand-bright" />{[project.address, project.city, project.country].filter(Boolean).join(", ")}</p>
+              <p className="mt-4 flex flex-wrap items-center gap-2 text-[15px] text-white/70"><MapPin className="h-4 w-4 text-brand-bright" />{[project.address, project.city, project.country].filter(Boolean).join(", ")}{project.city && <><span aria-hidden>·</span><Link href={cityFilterHref} className="text-brand-bright underline-offset-2 hover:underline">Projects in {project.city}</Link></>}</p>
               {project.developer && <p className="mt-1 text-[13.5px] text-white/50">Developed by <span className="text-white/80">{project.developer}</span></p>}
             </div>
             <div className="glass-dark rounded-3xl p-6 lg:col-span-4">
@@ -245,7 +252,7 @@ export default async function ProjectPage({ params }: { params: Params }) {
       {related.length > 0 && (
         <section className="bg-ivory-deep/60 py-20">
           <div className="mx-auto max-w-[1400px] px-4 sm:px-6">
-            <Reveal className="flex items-end justify-between"><h2 className="display text-[clamp(1.6rem,3vw,2.2rem)] text-ink">Related projects</h2><Link href={`/projects?market=${project.market?.slug ?? ""}`} className="text-[13.5px] font-medium text-brand hover:underline">View all</Link></Reveal>
+            <Reveal className="flex flex-wrap items-end justify-between gap-3"><h2 className="display text-[clamp(1.6rem,3vw,2.2rem)] text-ink">Related projects</h2><div className="flex flex-wrap gap-4">{project.city && <Link href={cityFilterHref} className="text-[13.5px] font-medium text-brand hover:underline">More in {project.city}</Link>}<Link href={`/projects?market=${project.market?.slug ?? ""}`} className="text-[13.5px] font-medium text-brand hover:underline">View all</Link></div></Reveal>
             <Reveal stagger="[data-r]" className="perspective mt-8 grid gap-6 md:grid-cols-3">{related.map((p) => <div key={p.id} data-r><ProjectCard project={p} /></div>)}</Reveal>
           </div>
         </section>

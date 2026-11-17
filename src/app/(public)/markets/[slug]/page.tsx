@@ -5,7 +5,7 @@ import { ArrowRight, MapPin } from "lucide-react";
 import Link from "next/link";
 import { getCitiesByMarket, getMarketBySlug, getPublishedMarkets, getPublishedProjects, getSettings } from "@/lib/content";
 import { getCurrentUser } from "@/lib/auth";
-import { buildMetadata } from "@/lib/seo";
+import { buildMetadata, resolvePageSeo } from "@/lib/seo";
 import { buildWhatsAppLink, fillTemplate } from "@/lib/whatsapp";
 import { Breadcrumbs, JsonLd } from "@/components/site/Breadcrumbs";
 import { Button3D } from "@/components/ui/Button3D";
@@ -14,6 +14,7 @@ import { ProjectCard } from "@/components/site/ProjectCard";
 import { InquiryForm } from "@/components/site/InquiryForm";
 import { PageBuilder } from "@/components/site/PageBuilder";
 import { safeSections } from "@/lib/page-builder";
+import { webPageJsonLd } from "@/lib/structured-data";
 
 export const dynamic = "force-dynamic";
 type Params = Promise<{ slug: string }>;
@@ -22,7 +23,7 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
   const { slug } = await params;
   const m = await getMarketBySlug(slug);
   if (!m) return { title: "Market not found", robots: { index: false } };
-  return buildMetadata(`/markets/${slug}`, { title: m.seoTitle || `Invest in ${m.name} Real Estate`, description: m.seoDescription || m.tagline || m.description, image: m.coverImage });
+  return buildMetadata(`/markets/${slug}`, { title: m.seoTitle || `Property for Sale & Investment in ${m.name}`, description: m.seoDescription || m.tagline || m.description, image: m.coverImage });
 }
 
 export default async function MarketPage({ params }: { params: Params }) {
@@ -33,7 +34,30 @@ export default async function MarketPage({ params }: { params: Params }) {
   const [projects, markets, marketCities] = await Promise.all([getPublishedProjects({ market: market.slug }), getPublishedMarkets(), getCitiesByMarket(market.id)]);
   const wa = buildWhatsAppLink(settings.whatsapp, fillTemplate(settings.whatsappMarketMessage, { market: market.name }));
   const crumbs = [{ name: "Home", href: "/" }, { name: "Markets", href: "/markets" }, { name: market.name, href: `/markets/${market.slug}` }];
-  const ld = { "@context": "https://schema.org", "@type": "Place", name: market.name, description: market.description, geo: { "@type": "GeoCoordinates", latitude: market.latitude, longitude: market.longitude }, image: market.coverImage };
+  const seo = await resolvePageSeo(`/markets/${market.slug}`, {
+    title: market.seoTitle || `Property for Sale & Investment in ${market.name}`,
+    description: market.seoDescription || market.tagline || market.description,
+    image: market.coverImage,
+  });
+  const placeId = `${seo.canonical}#place`;
+  const ld = {
+    "@context": "https://schema.org",
+    "@type": "Place",
+    "@id": placeId,
+    url: seo.canonical,
+    name: market.name,
+    description: seo.description,
+    geo: { "@type": "GeoCoordinates", latitude: market.latitude, longitude: market.longitude },
+    ...(seo.imageUrl ? { image: seo.imageUrl } : {}),
+  };
+  const pageLd = webPageJsonLd({
+    path: `/markets/${market.slug}`,
+    canonical: seo.canonical,
+    type: "CollectionPage",
+    name: seo.title,
+    description: seo.description,
+    mainEntityId: placeId,
+  });
   // Once an administrator publishes builder sections they replace the market
   // body (overview, cities, map, projects). The hero and statistics band stay.
   const customSections = safeSections(market.builderPublished);
@@ -41,20 +65,22 @@ export default async function MarketPage({ params }: { params: Params }) {
   return (
     <article>
       {!market.published && <><meta name="robots" content="noindex,nofollow" /><div className="fixed inset-x-0 top-0 z-[60] bg-amber-500 py-1.5 text-center text-[12px] font-semibold text-white">Preview — this market is unpublished.</div></>}
-      <JsonLd data={ld} />
+      {market.published && <JsonLd data={pageLd} />}
+      {market.published && <JsonLd data={ld} />}
       <section className="relative isolate overflow-hidden bg-space pt-28 text-white lg:pt-32">
         <div className="absolute inset-0">{market.coverImage && <Image src={market.coverImage} alt={market.name} fill priority className="object-cover opacity-60" sizes="100vw" />}<div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(5,8,12,0.4),rgba(5,8,12,0.6)_50%,#05080c)]" /></div>
         <div className="relative mx-auto max-w-[1400px] px-4 pb-20 sm:px-6">
           <Breadcrumbs items={crumbs} dark />
           <Reveal className="mt-10 max-w-3xl">
             <div className="text-5xl" aria-hidden>{market.flag}</div>
-            <h1 className="display mt-4 text-[clamp(2.6rem,6vw,5rem)]">{market.name}</h1>
+            <h1 className="display mt-4 text-[clamp(2.6rem,6vw,5rem)]">Property Investment in {market.name}</h1>
             <p className="mt-4 text-[18px] text-white/75">{market.tagline}</p>
             {/* Cities come from the admin Cities module first, so a city added there
                 appears here immediately; the market's tag list is the fallback. */}
             <p className="mt-3 flex items-center gap-2 text-[13px] text-white/50"><MapPin className="h-4 w-4 text-brand-bright" />{(marketCities.length ? marketCities.map((c) => c.name) : (market.cities ?? [])).join(" · ")} · {market.latitude.toFixed(2)}°, {market.longitude.toFixed(2)}°</p>
             <div className="mt-8 flex flex-wrap gap-3">
               <Button3D href={`/projects?market=${market.slug}`}>View Projects ({projects.length})</Button3D>
+              <Button3D href={`/buy?market=${market.slug}`} variant="secondary">Properties for Sale</Button3D>
               <Button3D href={wa} variant="whatsapp" icon="whatsapp" external>WhatsApp Advisor</Button3D>
             </div>
           </Reveal>
@@ -111,7 +137,7 @@ export default async function MarketPage({ params }: { params: Params }) {
         <div className="mx-auto max-w-[1400px] px-4 sm:px-6">
           <Reveal className="flex items-end justify-between"><h2 className="display text-[clamp(1.6rem,3vw,2.2rem)] text-ink">Projects in {market.name}</h2></Reveal>
           {projects.length === 0 ? (
-            <div className="mt-8 rounded-3xl border border-dashed border-ink/15 bg-white/60 p-12 text-center text-charcoal/70">New opportunities in {market.name} are being curated. <a href="#main" className="text-brand">Register your interest above.</a></div>
+            <div className="mt-8 rounded-3xl border border-dashed border-ink/15 bg-white/60 p-12 text-center text-charcoal/70">New opportunities in {market.name} are being curated. <Link href={`/buy?market=${market.slug}`} className="text-brand">Browse available properties</Link> or <a href="#main" className="text-brand">register your interest above.</a></div>
           ) : (
             <Reveal stagger="[data-p]" className="perspective mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">{projects.map((p) => <div key={p.id} data-p><ProjectCard project={p} /></div>)}</Reveal>
           )}

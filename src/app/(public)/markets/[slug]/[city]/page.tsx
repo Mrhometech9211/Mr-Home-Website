@@ -5,11 +5,12 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, MapPin } from "lucide-react";
 import { getCitiesByMarket, getCityBySlug, getMarketBySlug, getPublishedProjects, getSettings } from "@/lib/content";
 import { getCurrentUser } from "@/lib/auth";
-import { buildMetadata } from "@/lib/seo";
+import { buildMetadata, resolvePageSeo } from "@/lib/seo";
 import { Breadcrumbs, JsonLd } from "@/components/site/Breadcrumbs";
 import { Button3D } from "@/components/ui/Button3D";
 import { Reveal } from "@/components/site/Reveal";
 import { ProjectCard } from "@/components/site/ProjectCard";
+import { webPageJsonLd } from "@/lib/structured-data";
 
 export const dynamic = "force-dynamic";
 type Params = Promise<{ slug: string; city: string }>;
@@ -41,19 +42,37 @@ export default async function CityPage({ params }: { params: Params }) {
     { name: market.name, href: `/markets/${market.slug}` },
     { name: city.name, href: `/markets/${market.slug}/${city.slug}` },
   ];
+  const seo = await resolvePageSeo(`/markets/${market.slug}/${city.slug}`, {
+    title: city.seoTitle || `Property for Sale in ${city.name}, ${market.name}`,
+    description: city.seoDescription || city.tagline || city.description || undefined,
+    image: city.coverImage || market.coverImage,
+  });
+  const cityId = `${seo.canonical}#city`;
   const ld = {
     "@context": "https://schema.org",
     "@type": "City",
+    "@id": cityId,
+    url: seo.canonical,
     name: city.name,
-    description: city.description,
+    description: seo.description,
     containedInPlace: { "@type": "Country", name: market.name },
     geo: city.latitude != null && city.longitude != null ? { "@type": "GeoCoordinates", latitude: city.latitude, longitude: city.longitude } : undefined,
-    image: city.coverImage,
+    ...(seo.imageUrl ? { image: seo.imageUrl } : {}),
   };
+  const pageLd = webPageJsonLd({
+    path: `/markets/${market.slug}/${city.slug}`,
+    canonical: seo.canonical,
+    type: "CollectionPage",
+    name: seo.title,
+    description: seo.description,
+    mainEntityId: cityId,
+  });
 
   return (
     <article>
-      <JsonLd data={ld} />
+      {!market.published && <><meta name="robots" content="noindex,nofollow" /><div className="fixed inset-x-0 top-0 z-[60] bg-amber-500 py-1.5 text-center text-[12px] font-semibold text-white">Preview — this market is unpublished.</div></>}
+      {market.published && <JsonLd data={pageLd} />}
+      {market.published && <JsonLd data={ld} />}
       <section className="relative isolate overflow-hidden bg-space pt-28 text-white lg:pt-32">
         <div className="absolute inset-0">
           {city.coverImage ? <Image src={city.coverImage} alt={city.name} fill priority className="object-cover opacity-60" sizes="100vw" /> : market.coverImage ? <Image src={market.coverImage} alt={city.name} fill priority className="object-cover opacity-50" sizes="100vw" /> : null}
@@ -63,13 +82,14 @@ export default async function CityPage({ params }: { params: Params }) {
           <Breadcrumbs items={crumbs} dark />
           <Reveal className="mt-10 max-w-3xl">
             <p className="eyebrow !text-brand-bright">{market.flag} {market.name}</p>
-            <h1 className="display mt-4 text-[clamp(2.6rem,6vw,5rem)]">{city.name}</h1>
+            <h1 className="display mt-4 text-[clamp(2.6rem,6vw,5rem)]">Property Investment in {city.name}</h1>
             {city.tagline && <p className="mt-4 text-[18px] text-white/75">{city.tagline}</p>}
             {city.latitude != null && city.longitude != null && (
               <p className="mt-3 flex items-center gap-2 text-[13px] text-white/50"><MapPin className="h-4 w-4 text-brand-bright" />{city.latitude.toFixed(2)}°, {city.longitude.toFixed(2)}° · {projects.length} live project{projects.length === 1 ? "" : "s"}</p>
             )}
             <div className="mt-8 flex flex-wrap gap-3">
               <Button3D href={`/projects?market=${market.slug}&city=${encodeURIComponent(city.name)}`}>View Projects ({projects.length})</Button3D>
+              <Button3D href={`/buy?market=${market.slug}&city=${encodeURIComponent(city.name)}`} variant="secondary">Properties for Sale</Button3D>
               <Button3D href={`/markets/${market.slug}`} variant="secondary"><span className="inline-flex items-center gap-2"><ArrowLeft className="h-4 w-4" />Back to {market.name}</span></Button3D>
             </div>
           </Reveal>
@@ -119,7 +139,7 @@ export default async function CityPage({ params }: { params: Params }) {
         <div className="mx-auto max-w-[1400px] px-4 sm:px-6">
           <Reveal><h2 className="display text-[clamp(1.6rem,3vw,2.2rem)] text-ink">Projects in {city.name}</h2></Reveal>
           {projects.length === 0 ? (
-            <div className="mt-8 rounded-3xl border border-dashed border-ink/15 bg-white/60 p-12 text-center text-charcoal/70">New opportunities in {city.name} are being curated. <Link href="/contact" className="text-brand">Register your interest.</Link></div>
+            <div className="mt-8 rounded-3xl border border-dashed border-ink/15 bg-white/60 p-12 text-center text-charcoal/70">New opportunities in {city.name} are being curated. <Link href={`/buy?market=${market.slug}`} className="text-brand">Browse properties across {market.name}</Link> or <Link href="/contact" className="text-brand">register your interest.</Link></div>
           ) : (
             <Reveal stagger="[data-p]" className="perspective mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">{projects.map((p) => <div key={p.id} data-p><ProjectCard project={p} /></div>)}</Reveal>
           )}

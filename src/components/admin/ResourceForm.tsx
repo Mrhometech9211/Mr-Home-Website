@@ -8,6 +8,7 @@ import { RESOURCES } from "@/lib/resources";
 import { slugify } from "@/lib/utils";
 import { api, Btn, Confirm, useToast } from "./ui";
 import { FieldInput } from "./FieldInput";
+import { StructuredDataPreview } from "./StructuredDataPreview";
 
 type Opt = { value: number | string; label: string };
 
@@ -22,12 +23,14 @@ export function ResourceForm({ resourceKey, id, canWrite, inline, onSaved }: { r
   const [relOpts, setRelOpts] = useState<Record<string, Opt[]>>({});
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [slugTouched, setSlugTouched] = useState(id !== "new");
+  const [savedAt, setSavedAt] = useState(0);
 
   const groups = useMemo(() => {
     const g = new Map<string, typeof def.fields>();
     for (const f of def.fields) { const k = f.group ?? "General"; if (!g.has(k)) g.set(k, []); g.get(k)!.push(f); }
     return Array.from(g.entries());
   }, [def]);
+  const previewKind = resourceKey === "projects" ? "project" : resourceKey === "markets" ? "market" : resourceKey === "cities" ? "city" : null;
 
   const relationsKey = def.fields.filter((f) => f.type === "relation" && f.relation).map((f) => f.relation).join(",");
   /** Sections resource: published pages from the Pages module appear in the page dropdown. */
@@ -101,6 +104,7 @@ export function ResourceForm({ resourceKey, id, canWrite, inline, onSaved }: { r
       if (payload.password === "" || payload.password == null) delete payload.password;
       const res = id === "new" ? await api<{ data: { id: number } }>(`/api/admin/${resourceKey}`, { method: "POST", body: JSON.stringify(payload) }) : await api<{ data: { id: number } }>(`/api/admin/${resourceKey}/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
       toast(`${def.singular} saved`);
+      setSavedAt(Date.now());
       router.refresh();
       if (onSaved) onSaved();
       else if (id === "new") router.replace(def.detailPath ? def.detailPath(res.data) : `/admin/${resourceKey}/${res.data.id}`);
@@ -154,6 +158,14 @@ export function ResourceForm({ resourceKey, id, canWrite, inline, onSaved }: { r
           </div>
         </section>
       ))}
+
+      {previewKind && id !== "new" && (
+        <StructuredDataPreview
+          query={`kind=${previewKind}&id=${id}`}
+          title={`${def.singular} JSON-LD (read-only)`}
+          refreshKey={savedAt || String(values.updatedAt ?? "")}
+        />
+      )}
 
       {canWrite && (
         <div className="sticky bottom-4 z-10 flex flex-wrap items-center justify-end gap-2 rounded-2xl border border-ink/8 bg-white/90 p-3 shadow-lg backdrop-blur">

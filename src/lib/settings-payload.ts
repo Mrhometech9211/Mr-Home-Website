@@ -23,7 +23,7 @@ export const settingsPatchSchema = z.object({
   socialLinks: z.array(z.object({ platform: str(40), url: str(1000).refine(isSafeHref, "Social link URL must start with https:// (or be an internal /path)"), icon: str(1000).refine((v) => !v || isSafeHref(v), "Social icon must be a https:// URL or an internal /api/media path").optional() })).max(20),
   footerDescription: str(400), copyrightText: str(160),
   footerLinks: z.array(z.object({ label: str(80), href: str(500).refine(isSafeHref, "Footer link href must be an internal path or a https:// URL") })).max(20),
-  seoDefaultTitle: str(160), seoDefaultDescription: str(400), seoOgImage: str(1000), siteUrl: str(300), gaId: str(60), metaPixelId: str(60),
+  seoDefaultTitle: str(160), seoDefaultDescription: str(400), seoOgImage: str(1000), siteUrl: str(300), rentalServicesEnabled: z.boolean(), gaId: str(60), metaPixelId: str(60),
   whatsappDefaultMessage: str(1000), whatsappProjectMessage: str(1000), whatsappMarketMessage: str(1000),
   newsletterEnabled: z.boolean(), newsletterTitle: str(80), newsletterDescription: str(300),
   introVideoUrl: str(1000), introVideoPoster: str(1000), introVideoEnabled: z.boolean(),

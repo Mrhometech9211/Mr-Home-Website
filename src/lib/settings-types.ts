@@ -71,6 +71,8 @@ export interface SiteSettings {
   seoDefaultDescription: string;
   seoOgImage: string;
   siteUrl: string;
+  /** Explicit confirmation that MR.HOME offers rental services, even before inventory is listed. */
+  rentalServicesEnabled: boolean;
   gaId: string;
   metaPixelId: string;
   whatsappDefaultMessage: string;
@@ -137,6 +139,7 @@ export const DEFAULT_SETTINGS: SiteSettings = {
   seoDefaultDescription: "Curated luxury properties across 10 global markets. Your trusted partner in international real estate investment.",
   seoOgImage: "/images/hero-villa.jpg",
   siteUrl: "",
+  rentalServicesEnabled: false,
   gaId: "",
   metaPixelId: "",
   whatsappDefaultMessage: "Hello MR.HOME, I would like to learn more about your property opportunities.",

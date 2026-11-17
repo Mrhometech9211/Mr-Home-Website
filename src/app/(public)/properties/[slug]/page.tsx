@@ -5,9 +5,8 @@ import { notFound } from "next/navigation";
 import { BedDouble, Bath, Maximize, MapPin, Building2, KeyRound, Sofa, CalendarClock, Check, Share2 } from "lucide-react";
 import { getPropertyBySlug, getPublishedMarkets, getPublishedProperties, getSettings } from "@/lib/content";
 import { getCurrentUser } from "@/lib/auth";
-import { buildMetadata } from "@/lib/seo";
-import { absoluteSiteUrl } from "@/lib/site";
-import { propertyJsonLd } from "@/lib/structured-data";
+import { buildMetadata, resolvePageSeo } from "@/lib/seo";
+import { propertyJsonLd, webPageJsonLd } from "@/lib/structured-data";
 import { buildWhatsAppLink, fillTemplate } from "@/lib/whatsapp";
 import { formatPrice } from "@/lib/utils";
 import { Breadcrumbs, JsonLd } from "@/components/site/Breadcrumbs";
@@ -54,7 +53,20 @@ export default async function PropertyPage({ params }: { params: Params }) {
     { icon: CalendarClock, label: "Availability", value: property.availability },
   ].filter((f) => f.value != null && f.value !== "");
 
-  const ld = propertyJsonLd(property);
+  const seo = await resolvePageSeo(`/properties/${property.slug}`, {
+    title: property.seoTitle || `${property.title} — ${property.city ?? ""}${property.market ? `, ${property.market.name}` : ""}`,
+    description: property.seoDescription || property.shortDescription || property.description?.slice(0, 160) || null,
+    image: property.coverImage,
+  });
+  const ld = propertyJsonLd(property, { canonical: seo.canonical, description: seo.description });
+  const pageLd = webPageJsonLd({
+    path: `/properties/${property.slug}`,
+    canonical: seo.canonical,
+    name: seo.title,
+    description: seo.description,
+    mainEntityId: `${seo.canonical}#listing`,
+    dateModified: property.updatedAt ? new Date(property.updatedAt).toISOString() : null,
+  });
   const crumbs = [
     { name: "Home", href: "/" },
     { name: isRent ? "Rent" : "Buy", href: isRent ? "/rent" : "/buy" },
@@ -64,6 +76,7 @@ export default async function PropertyPage({ params }: { params: Params }) {
 
   return (
     <article>
+      <JsonLd data={pageLd} />
       <JsonLd data={ld} />
 
       {/* Hero */}

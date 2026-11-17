@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Phone, Mail, MapPin, Clock, MessageCircle } from "lucide-react";
 import { getPublishedMarketCities, getPublishedMarkets, getPublishedProjects, getSections, getSettings } from "@/lib/content";
-import { buildMetadata } from "@/lib/seo";
+import { buildMetadata, resolvePageSeo } from "@/lib/seo";
 import { buildWhatsAppLink, telLink } from "@/lib/whatsapp";
 import { PageHero } from "@/components/site/PageHero";
 import { InquiryForm } from "@/components/site/InquiryForm";
@@ -24,11 +24,16 @@ export default async function ContactPage({ searchParams }: { searchParams: Prom
   const preProject = sp.project ? projects.find((p) => p.slug === sp.project && p.published && !p.archived) : undefined;
   const hero = sections.find((x) => x.key === "hero");
   const wa = buildWhatsAppLink(s.whatsapp, s.whatsappDefaultMessage);
+  const seo = await resolvePageSeo("/contact", {
+    title: "Contact — Let’s Find the Right Property for You",
+    description: hero?.body,
+  });
   const pageLd = webPageJsonLd({
     path: "/contact",
+    canonical: seo.canonical,
     type: "ContactPage",
-    name: hero?.title || "Let’s Find the Right Property for You",
-    description: hero?.body,
+    name: seo.title,
+    description: seo.description,
     mainEntityId: organizationId(),
   });
   return (

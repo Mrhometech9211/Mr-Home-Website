@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { api, Btn, inputCls, labelCls, useToast } from "./ui";
 import { ImageInput } from "./FieldInput";
 import { fireNotification, playSound } from "./LeadNotifier";
+import { StructuredDataPreview } from "./StructuredDataPreview";
 
 type Tab = { key: string; label: string };
 const TABS: Tab[] = [
@@ -140,6 +141,7 @@ export function SettingsForm({ canWrite }: { canWrite: boolean }) {
   const [s, setS] = useState<SiteSettings | null>(null);
   const [tab, setTab] = useState("general");
   const [saving, setSaving] = useState(false);
+  const [savedAt, setSavedAt] = useState(0);
   const [roles, setRoles] = useState<string[]>(["SUPER_ADMIN", "ADMIN", "EDITOR"]);
 
   useEffect(() => {
@@ -158,7 +160,7 @@ export function SettingsForm({ canWrite }: { canWrite: boolean }) {
   const setLyp = (l: ListYourPropertyContent) => setS({ ...s, listYourProperty: l });
   const save = async () => {
     setSaving(true);
-    try { const d = await api<{ data: SiteSettings }>("/api/admin/settings", { method: "PUT", body: JSON.stringify(s) }); setS(d.data); toast("Settings saved — the public site is updated"); } catch (e) { toast((e as Error).message, "error"); } finally { setSaving(false); }
+    try { const d = await api<{ data: SiteSettings }>("/api/admin/settings", { method: "PUT", body: JSON.stringify(s) }); setS(d.data); setSavedAt(Date.now()); toast("Settings saved — the public site is updated"); } catch (e) { toast((e as Error).message, "error"); } finally { setSaving(false); }
   };
   const textProps = { s, set, canWrite } as const;
 
@@ -196,6 +198,7 @@ export function SettingsForm({ canWrite }: { canWrite: boolean }) {
         </>)}
         {tab === "seo" && (<>
           <Text {...textProps} k="siteUrl" label="Canonical site URL (reference only)" help="Canonical, Open Graph and sitemap URLs are always emitted as https://www.mrhomerealestate.com so previews and legacy domains cannot leak into search results." />
+          <Toggle {...textProps} k="rentalServicesEnabled" label="Rental services are confirmed (keeps /rent public even before a rental listing is published)" />
           <Text {...textProps} k="seoDefaultTitle" label="Default title" /><Area {...textProps} k="seoDefaultDescription" label="Default description" />
           <div><label className={labelCls}>Default Open Graph image</label><ImageInput value={s.seoOgImage} onChange={(v) => set("seoOgImage", v)} /></div>
           <div className="grid gap-4 md:grid-cols-2"><Text {...textProps} k="gaId" label="Google Analytics ID" help="Loaded only after cookie consent." /><Text {...textProps} k="metaPixelId" label="Meta Pixel ID" /></div>
@@ -326,6 +329,11 @@ export function SettingsForm({ canWrite }: { canWrite: boolean }) {
         </>)}
         {tab === "legal" && (<><Area {...textProps} k="cookieConsentText" label="Cookie consent text" /><Area {...textProps} k="disclaimer" label="Real estate disclaimer" /></>)}
       </div>
+      <StructuredDataPreview
+        query="kind=site"
+        title="Organization & WebSite JSON-LD (read-only)"
+        refreshKey={savedAt}
+      />
       {canWrite && <div className="sticky bottom-4 flex justify-end rounded-2xl border border-ink/8 bg-white/90 p-3 shadow-lg backdrop-blur"><Btn loading={saving} onClick={save}>Save settings</Btn></div>}
     </div>
   );

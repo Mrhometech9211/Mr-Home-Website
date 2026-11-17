@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { getProjectCountsByMarket, getPublishedMarketCities, getPublishedMarkets, getPublishedProjectCount, getPublishedProjects, getSections, getSettings } from "@/lib/content";
-import { buildMetadata } from "@/lib/seo";
+import { buildMetadata, resolvePageSeo } from "@/lib/seo";
 import { HomeStage } from "@/components/home/HomeStage";
 import { StatsBar } from "@/components/home/StatsBar";
 import { WhySection } from "@/components/home/WhySection";
@@ -34,10 +34,12 @@ export default async function HomePage() {
   const showcase = (featured.length >= 4 ? featured : projects).slice(0, 8);
   const formMarkets = markets.map((m) => ({ id: m.id, name: m.name, slug: m.slug, flag: m.flag, cities: marketCitiesMap[m.id] }));
   const formProjects = projects.map((p) => ({ id: p.id, name: p.name, marketId: p.marketId }));
+  const seo = await resolvePageSeo("/", { title: settings.seoDefaultTitle, description: settings.seoDefaultDescription });
   const pageLd = webPageJsonLd({
     path: "/",
-    name: settings.seoDefaultTitle,
-    description: settings.seoDefaultDescription,
+    canonical: seo.canonical,
+    name: seo.title,
+    description: seo.description,
   });
 
   return (

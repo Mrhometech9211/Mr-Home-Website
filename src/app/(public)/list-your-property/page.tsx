@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { getFaqs, getPublishedMarkets, getSettings } from "@/lib/content";
-import { buildMetadata } from "@/lib/seo";
+import { buildMetadata, resolvePageSeo } from "@/lib/seo";
 import { PageHero } from "@/components/site/PageHero";
 import { Reveal } from "@/components/site/Reveal";
 import { Button3D } from "@/components/ui/Button3D";
@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { Breadcrumbs, JsonLd } from "@/components/site/Breadcrumbs";
 import { ListPropertyForm } from "@/components/list-your-property/ListPropertyForm";
 import { getLypSections } from "@/lib/site-pages";
+import { webPageJsonLd } from "@/lib/structured-data";
 
 export const dynamic = "force-dynamic";
 
@@ -54,6 +55,17 @@ export default async function ListYourPropertyPage() {
         )}
       </>
     ) : null;
+  const seo = await resolvePageSeo("/list-your-property", {
+    title: settings.listYourProperty.title || "List Your Property with Mr.Home",
+    description: heroBody,
+    image: heroImage,
+  });
+  const pageLd = webPageJsonLd({
+    path: "/list-your-property",
+    canonical: seo.canonical,
+    name: seo.title,
+    description: seo.description,
+  });
   const ld = {
     "@context": "https://schema.org",
     "@type": "FAQPage",
@@ -62,6 +74,7 @@ export default async function ListYourPropertyPage() {
 
   return (
     <>
+      <JsonLd data={pageLd} />
       <JsonLd data={ld} />
       <PageHero
         eyebrow={heroEyebrow ?? "For Owners"}

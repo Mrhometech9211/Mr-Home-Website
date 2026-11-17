@@ -2,8 +2,9 @@ import type { ReactElement } from "react";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getLegalPage, getPublishedBuilderPage, getSections, getSettings } from "@/lib/content";
-import { buildMetadata } from "@/lib/seo";
-import { Breadcrumbs } from "@/components/site/Breadcrumbs";
+import { buildMetadata, resolvePageSeo } from "@/lib/seo";
+import { Breadcrumbs, JsonLd } from "@/components/site/Breadcrumbs";
+import { webPageJsonLd } from "@/lib/structured-data";
 import { Markdown } from "@/components/site/Markdown";
 import { PageBuilder } from "@/components/site/PageBuilder";
 import { Reveal } from "@/components/site/Reveal";
@@ -48,9 +49,12 @@ export default async function CatchAllPage({ params }: { params: Params }) {
   const { slug } = await params;
   const [legal, page, s] = await Promise.all([getLegalPage(slug), getPublishedBuilderPage(slug), getSettings()]);
   if (legal) {
+    const seo = await resolvePageSeo(`/${legal.slug}`, { title: legal.seoTitle || legal.title, description: legal.seoDescription });
+    const pageLd = webPageJsonLd({ path: `/${legal.slug}`, canonical: seo.canonical, name: seo.title, description: seo.description });
     return (
       <article className="pt-32 pb-24 lg:pt-40">
         <div className="mx-auto max-w-3xl px-4 sm:px-6">
+          <JsonLd data={pageLd} />
           <Breadcrumbs items={[{ name: "Home", href: "/" }, { name: legal.title, href: `/${legal.slug}` }]} />
           <p className="mt-8 text-[12px] text-mist">Last updated {formatDate(legal.updatedAt)}</p>
           <Markdown content={legal.content} className="prose-legal mt-2" />
@@ -68,8 +72,16 @@ export default async function CatchAllPage({ params }: { params: Params }) {
   if (page) {
     // Content sections linked to this page via Admin → Content → Sections.
     const linkedSections = await getSections(`custom:${page.slug}`);
+    const seo = await resolvePageSeo(`/${page.slug}`, {
+      title: page.seoTitle || page.title,
+      description: page.seoDescription,
+      image: page.ogImage,
+      noIndex: page.noIndex,
+    });
+    const pageLd = webPageJsonLd({ path: `/${page.slug}`, canonical: seo.canonical, name: seo.title, description: seo.description });
     return (
       <>
+        <JsonLd data={pageLd} />
         <BreadcrumbsWrapper title={page.navLabel || page.title} href={`/${page.slug}`} />
         <PageBuilder sections={page.published} source={`page:${page.slug}`} />
         {linkedSections.length > 0 && (

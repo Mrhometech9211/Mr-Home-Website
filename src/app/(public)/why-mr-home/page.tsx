@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
 import { getFaqs, getSections, getSettings, getTestimonials } from "@/lib/content";
-import { buildMetadata } from "@/lib/seo";
+import { buildMetadata, resolvePageSeo } from "@/lib/seo";
 import { PageHero } from "@/components/site/PageHero";
 import { Reveal } from "@/components/site/Reveal";
 import { DynamicIcon } from "@/components/site/Icons";
 import { Button3D } from "@/components/ui/Button3D";
 import { JsonLd } from "@/components/site/Breadcrumbs";
+import { webPageJsonLd } from "@/lib/structured-data";
 
 export const dynamic = "force-dynamic";
 
@@ -20,9 +21,12 @@ export default async function WhyPage() {
   const values = byKey.values;
   const process = byKey.process;
   const faqLd = faqs.length ? { "@context": "https://schema.org", "@type": "FAQPage", mainEntity: faqs.map((f) => ({ "@type": "Question", name: f.question, acceptedAnswer: { "@type": "Answer", text: f.answer } })) } : null;
+  const seo = await resolvePageSeo("/why-mr-home", { title: hero?.title || "Why Mr.Home", description: hero?.body, image: hero?.image });
+  const pageLd = webPageJsonLd({ path: "/why-mr-home", canonical: seo.canonical, name: seo.title, description: seo.description });
 
   return (
     <>
+      <JsonLd data={pageLd} />
       <PageHero eyebrow={hero?.eyebrow || "Why Mr.Home"} title={hero?.title || "Why Mr.Home"} body={hero?.body} image={hero?.image} crumbs={[{ name: "Home", href: "/" }, { name: "Why Mr.Home", href: "/why-mr-home" }]} />
 
       {values && (

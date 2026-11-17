@@ -7,6 +7,7 @@ import { api, Badge, Btn, Confirm, EmptyState, Skeleton, useToast, Card } from "
 import type { BuilderPage, BuilderSection } from "@/lib/page-builder";
 import { PageMetaEditor } from "@/components/admin/Stubs";
 import { VisualBuilder } from "@/components/admin/VisualBuilder";
+import { StructuredDataPreview } from "@/components/admin/StructuredDataPreview";
 import { formatDate } from "@/lib/utils";
 
 /** pageId 0 → create mode (POST /api/admin/pages, then continue in edit mode). */
@@ -199,6 +200,14 @@ export function PageEditor({ pageId }: { pageId: number }) {
           pageSlug={page?.slug}
         />
       </Card>
+
+      {!creating && (
+        <StructuredDataPreview
+          query={`kind=page&id=${pageId}`}
+          title="Page JSON-LD (read-only)"
+          refreshKey={page?.updatedAt ?? ""}
+        />
+      )}
 
       {creating ? (
         <EmptyState title="Create the page first" description="Click “Create page” above — the visual editor, preview and publishing unlock right after." />

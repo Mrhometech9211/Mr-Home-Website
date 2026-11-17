@@ -7,6 +7,7 @@ import {
   getPublishedNews,
   getPublishedProjects,
   getPublishedPropertyRoutes,
+  isRentPublic,
 } from "@/lib/content";
 import { SITE_URL } from "@/lib/site";
 
@@ -15,7 +16,7 @@ export const dynamic = "force-dynamic";
 const url = (path: string) => `${SITE_URL}${path}`;
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const [projects, markets, legal, news, builderPages, properties, cities] = await Promise.all([
+  const [projects, markets, legal, news, builderPages, properties, cities, rentPublic] = await Promise.all([
     getPublishedProjects(),
     getPublishedMarkets(),
     getPublishedLegalPages(),
@@ -23,13 +24,14 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     getPublishedBuilderPages(),
     getPublishedPropertyRoutes(),
     getPublishedCityRoutes(),
+    isRentPublic(),
   ]);
   const now = new Date();
 
   const entries: MetadataRoute.Sitemap = [
     { url: url("/"), lastModified: now, changeFrequency: "weekly", priority: 1 },
     { url: url("/buy"), lastModified: now, changeFrequency: "daily", priority: 0.9 },
-    { url: url("/rent"), lastModified: now, changeFrequency: "daily", priority: 0.9 },
+    ...(rentPublic ? [{ url: url("/rent"), lastModified: now, changeFrequency: "daily" as const, priority: 0.9 }] : []),
     { url: url("/projects"), lastModified: now, changeFrequency: "daily", priority: 0.9 },
     { url: url("/markets"), lastModified: now, changeFrequency: "weekly", priority: 0.9 },
     { url: url("/news"), lastModified: news[0]?.updatedAt ?? now, changeFrequency: "daily", priority: 0.7 },
@@ -42,7 +44,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       changeFrequency: "weekly" as const,
       priority: 0.8,
     })),
-    ...properties.map((p) => ({
+    ...properties.filter((p) => rentPublic || p.purpose !== "rent").map((p) => ({
       url: url(`/properties/${p.slug}`),
       lastModified: p.updatedAt,
       changeFrequency: "weekly" as const,

@@ -1,12 +1,14 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { getCityFacets, getPropertyTypes, getPublishedMarketCities, getPublishedMarkets, getPublishedProjects, getSections } from "@/lib/content";
-import { buildMetadata } from "@/lib/seo";
+import { buildMetadata, resolvePageSeo } from "@/lib/seo";
 import { PageHero } from "@/components/site/PageHero";
 import { ProjectCard } from "@/components/site/ProjectCard";
 import { Reveal } from "@/components/site/Reveal";
 import { Button3D } from "@/components/ui/Button3D";
 import { ProjectFilters } from "./ProjectFilters";
+import { JsonLd } from "@/components/site/Breadcrumbs";
+import { webPageJsonLd } from "@/lib/structured-data";
 
 export const dynamic = "force-dynamic";
 
@@ -21,9 +23,18 @@ export default async function ProjectsPage({ searchParams }: { searchParams: SP 
   const [projects, markets, marketCitiesMap, types, sections, cityFacets] = await Promise.all([getPublishedProjects({ market: sp.market, city: sp.city, type: sp.type, status: sp.status, q: sp.q }), getPublishedMarkets(), getPublishedMarketCities(), getPropertyTypes(), getSections("projects"), getCityFacets()]);
   const hero = sections.find((s) => s.key === "hero");
   const activeMarket = markets.find((m) => m.slug === sp.market);
+  const seo = await resolvePageSeo("/projects", { title: "Premium Projects Across The Globe", description: hero?.body });
+  const pageLd = webPageJsonLd({
+    path: "/projects",
+    canonical: seo.canonical,
+    type: "CollectionPage",
+    name: seo.title,
+    description: seo.description,
+  });
 
   return (
     <>
+      <JsonLd data={pageLd} />
       <PageHero eyebrow={hero?.eyebrow || "Portfolio"} title={activeMarket ? `Projects in ${activeMarket.name}` : hero?.title || "Premium Projects Across The Globe"} body={activeMarket ? activeMarket.tagline : hero?.body} crumbs={[{ name: "Home", href: "/" }, { name: "Projects", href: "/projects" }, ...(activeMarket ? [{ name: activeMarket.name, href: `/projects?market=${activeMarket.slug}` }] : [])]}>
         <Suspense fallback={<div className="skeleton mt-10 h-24 rounded-3xl" />}>
           <ProjectFilters markets={markets.map((m) => ({ id: m.id, slug: m.slug, name: m.name, flag: m.flag, cities: marketCitiesMap[m.id] }))} types={types} cities={cityFacets} />

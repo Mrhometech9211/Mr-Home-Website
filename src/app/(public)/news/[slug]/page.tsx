@@ -3,14 +3,15 @@ import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getNewsArticleBySlug, getPublishedNews } from "@/lib/content";
-import { buildMetadata } from "@/lib/seo";
+import { buildMetadata, resolvePageSeo } from "@/lib/seo";
 import { absoluteSiteUrl } from "@/lib/site";
-import { articleJsonLd } from "@/lib/structured-data";
+import { articleJsonLd, webPageJsonLd } from "@/lib/structured-data";
 import { PageHero } from "@/components/site/PageHero";
 import { Markdown } from "@/components/site/Markdown";
 import { PageBuilder } from "@/components/site/PageBuilder";
 import { safeSections } from "@/lib/page-builder";
 import { formatDateTime } from "@/lib/utils";
+import { JsonLd } from "@/components/site/Breadcrumbs";
 
 export const dynamic = "force-dynamic";
 
@@ -39,10 +40,24 @@ export default async function NewsArticlePage({ params }: { params: Promise<{ sl
   // Published builder sections replace the Markdown body; the header, cover
   // image and related-article rail stay exactly as they are.
   const customSections = safeSections(article.builderPublished);
-  const jsonLd = articleJsonLd(article);
+  const seo = await resolvePageSeo(`/news/${article.slug}`, {
+    title: article.seoTitle || article.title,
+    description: article.seoDescription || article.excerpt,
+    image: article.socialImage || article.coverImage,
+  });
+  const jsonLd = articleJsonLd(article, { canonical: seo.canonical, description: seo.description });
+  const pageLd = webPageJsonLd({
+    path: `/news/${article.slug}`,
+    canonical: seo.canonical,
+    name: seo.title,
+    description: seo.description,
+    mainEntityId: `${seo.canonical}#article`,
+    dateModified: article.updatedAt.toISOString(),
+  });
 
   return (
     <>
+      <JsonLd data={pageLd} />
       <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{
@@ -81,7 +96,7 @@ export default async function NewsArticlePage({ params }: { params: Promise<{ sl
 
       <article className="pb-24">
         <div className={customSections.length ? "mx-auto max-w-[1240px] px-4 sm:px-6" : "mx-auto max-w-3xl px-4 sm:px-6"}>
-          <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+          <JsonLd data={jsonLd} />
           {article.coverImage && (
             <div className="relative mt-10 aspect-[16/9] w-full overflow-hidden rounded-3xl bg-ivory-deep shadow-card">
               <Image src={article.coverImage} alt={article.coverImageAlt || article.title} fill priority className="object-cover" sizes="(min-width:768px) 768px, 100vw" />

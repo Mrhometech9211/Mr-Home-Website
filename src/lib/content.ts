@@ -1,6 +1,6 @@
 import "server-only";
 import { cache } from "react";
-import { and, asc, desc, eq, ilike, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, isNotNull, or, sql, type SQL } from "drizzle-orm";
 import type { PgColumn } from "drizzle-orm/pg-core";
 import { db, initDb } from "@/db";
 import { cities, faqs, legalPages, markets, navigationItems, newsArticles, pageSections, pages as builderPages, projects, properties, seoEntries, siteSettings, testimonials, type BuilderPage, type City, type Market, type NewsArticle, type Project, type Property } from "@/db/schema";
@@ -49,6 +49,16 @@ export const getPublishedMarkets = cache(async (): Promise<Market[]> => {
   return db.select().from(markets).where(eq(markets.published, true)).orderBy(asc(markets.order), asc(markets.name));
 });
 
+/**
+ * Rent is a public section only when there is genuine published rental
+ * inventory, or an administrator has explicitly confirmed rental services.
+ * Until then /rent is hidden from navigation/sitemap and returns 404.
+ */
+export const isRentPublic = cache(async (): Promise<boolean> => {
+  const [settings, counts] = await Promise.all([getSettings(), getPropertyCountsByPurpose()]);
+  return counts.rent > 0 || settings.rentalServicesEnabled === true;
+});
+
 export type MarketMetricWithMarket = import("@/db/schema").MarketMetric & { marketName: string; marketSlug: string; marketFlag: string };
 
 /** Published comparison metrics — only rows an admin has deliberately published. */
@@ -73,6 +83,20 @@ export const getMarketBySlug = cache(async (slug: string, includeDrafts = false)
   await initDb(); // guarantee initialisation even when called concurrently
   const where = includeDrafts ? eq(markets.slug, slug) : and(eq(markets.slug, slug), eq(markets.published, true));
   const rows = await db.select().from(markets).where(where).limit(1);
+  return rows[0] ?? null;
+});
+
+/** Admin-only market lookup for the read-only JSON-LD preview. */
+export const getMarketById = cache(async (id: number): Promise<Market | null> => {
+  await initDb();
+  const rows = await db.select().from(markets).where(eq(markets.id, id)).limit(1);
+  return rows[0] ?? null;
+});
+
+/** Admin-only city lookup for the read-only JSON-LD preview. */
+export const getCityById = cache(async (id: number): Promise<City | null> => {
+  await initDb();
+  const rows = await db.select().from(cities).where(eq(cities.id, id)).limit(1);
   return rows[0] ?? null;
 });
 
@@ -185,11 +209,40 @@ export const getPublishedProjects = cache(async (filters: ProjectFilters = {}): 
   return mapRows(rows);
 });
 
+/** Cities with live project inventory — used for useful marketplace internal links. */
+export type ProjectLocationCount = { marketSlug: string; marketName: string; city: string; citySlug: string | null; count: number };
+
+export const getPublishedProjectLocations = cache(async (): Promise<ProjectLocationCount[]> => {
+  await ensureSeeded();
+  const rows = await db
+    .select({
+      marketSlug: markets.slug,
+      marketName: markets.name,
+      city: projects.city,
+      citySlug: cities.slug,
+      count: sql<number>`count(*)::int`,
+    })
+    .from(projects)
+    .innerJoin(markets, eq(projects.marketId, markets.id))
+    .leftJoin(cities, and(eq(cities.marketId, projects.marketId), eq(cities.name, projects.city), eq(cities.published, true)))
+    .where(and(eq(projects.published, true), eq(projects.archived, false), isNotNull(projects.city)))
+    .groupBy(markets.slug, markets.name, projects.city, cities.slug)
+    .orderBy(desc(sql`count(*)`), asc(markets.name), asc(projects.city));
+  return rows.filter((r): r is ProjectLocationCount => Boolean(r.city));
+});
+
 export const getProjectBySlug = cache(async (slug: string, includeDrafts = false): Promise<ProjectWithMarket | null> => {
   await initDb();
   const conds: SQL[] = [eq(projects.slug, slug)];
   if (!includeDrafts) conds.push(eq(projects.published, true), eq(projects.archived, false));
   const rows = await db.select(projectSelect).from(projects).leftJoin(markets, eq(projects.marketId, markets.id)).where(and(...conds)).limit(1);
+  return mapRows(rows)[0] ?? null;
+});
+
+/** Admin-only lookup used by the read-only JSON-LD preview (includes drafts). */
+export const getProjectById = cache(async (id: number): Promise<ProjectWithMarket | null> => {
+  await initDb();
+  const rows = await db.select(projectSelect).from(projects).leftJoin(markets, eq(projects.marketId, markets.id)).where(eq(projects.id, id)).limit(1);
   return mapRows(rows)[0] ?? null;
 });
 
@@ -362,10 +415,10 @@ export const getPropertyBySlug = cache(async (slug: string, includeDrafts = fals
 });
 
 /** Published, non-archived listing URLs — used by the sitemap without the marketplace page cap. */
-export const getPublishedPropertyRoutes = cache(async (): Promise<{ slug: string; updatedAt: Date }[]> => {
+export const getPublishedPropertyRoutes = cache(async (): Promise<{ slug: string; updatedAt: Date; purpose: string }[]> => {
   await initDb();
   return db
-    .select({ slug: properties.slug, updatedAt: properties.updatedAt })
+    .select({ slug: properties.slug, updatedAt: properties.updatedAt, purpose: properties.purpose })
     .from(properties)
     .where(and(eq(properties.published, true), eq(properties.archived, false)));
 });

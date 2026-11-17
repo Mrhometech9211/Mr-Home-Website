@@ -2,10 +2,12 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { getPublishedMarkets, getNewsCategories, getPublishedNews, getSections } from "@/lib/content";
-import { buildMetadata } from "@/lib/seo";
+import { buildMetadata, resolvePageSeo } from "@/lib/seo";
 import { PageHero } from "@/components/site/PageHero";
 import { Reveal } from "@/components/site/Reveal";
 import { formatDateTime } from "@/lib/utils";
+import { JsonLd } from "@/components/site/Breadcrumbs";
+import { webPageJsonLd } from "@/lib/structured-data";
 
 export const dynamic = "force-dynamic";
 
@@ -27,9 +29,16 @@ export default async function NewsPage({ searchParams }: { searchParams: SP }) {
     getSections("news"),
   ]);
   const hero = sections.find((s) => s.key === "hero");
+  const seo = await resolvePageSeo("/news", {
+    title: "News & Market Insights",
+    description: "Market reports, investment guides and updates from MR.HOME across 10 global real estate markets.",
+    image: hero?.image,
+  });
+  const pageLd = webPageJsonLd({ path: "/news", canonical: seo.canonical, type: "CollectionPage", name: seo.title, description: seo.description });
 
   return (
     <>
+      <JsonLd data={pageLd} />
       <PageHero
         eyebrow={hero?.eyebrow ?? "News"}
         title={hero?.title ?? "News & Market Insights"}

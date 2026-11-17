@@ -51,17 +51,20 @@ export function websiteJsonLd(s: SiteSettings) {
 }
 
 /**
- * Page-level entity used by the homepage, Buy and Contact templates. The
- * WebPage types describe the existing page; they do not add claims or copy.
+ * Page-level entity used by public templates. `canonical` is resolved from the
+ * same SEO override used for the <link rel="canonical"> and Open Graph URL, so
+ * title/description/canonical edits flow through to JSON-LD automatically.
  */
 export function webPageJsonLd(input: {
   path: string;
+  canonical?: string | null;
   name: string;
   description?: string | null;
   type?: "WebPage" | "CollectionPage" | "ContactPage";
   mainEntityId?: string;
+  dateModified?: string | null;
 }) {
-  const url = absoluteSiteUrl(input.path);
+  const url = input.canonical ? absoluteSiteUrl(input.canonical) : absoluteSiteUrl(input.path);
   const description = input.description?.trim();
   return {
     "@context": "https://schema.org",
@@ -73,6 +76,7 @@ export function webPageJsonLd(input: {
     isPartOf: { "@id": websiteId() },
     about: { "@id": organizationId() },
     ...(input.mainEntityId ? { mainEntity: { "@id": input.mainEntityId } } : {}),
+    ...(input.dateModified ? { dateModified: input.dateModified } : {}),
   };
 }
 
@@ -84,6 +88,23 @@ function availabilityForProject(status: string | null | undefined, verifiedAt: D
   if (status === "available" || status === "ready") return "https://schema.org/InStock";
   if (status === "sold-out") return "https://schema.org/SoldOut";
   return undefined;
+}
+
+/**
+ * A project price is public only when an admin recorded a price check date, or
+ * a verification check explicitly confirms pricing with its own check date.
+ * The price value itself is never inferred from ROI, handover or status.
+ */
+function confirmedProjectPrice(p: ProjectWithMarket): number | null {
+  const price = positiveNumber(p.price);
+  if (!price) return null;
+  const checkedCheck = (p.verificationChecks ?? []).some(
+    (check) =>
+      /price|pricing/i.test(check.check) &&
+      /^(confirmed|verified|passed|complete|ok)$/i.test(check.status.trim()) &&
+      Boolean(check.checkedAt),
+  );
+  return p.priceCheckedAt || checkedCheck ? price : null;
 }
 
 function positiveNumber(value: unknown): number | null {
@@ -115,9 +136,12 @@ function floorSize(areaValue: unknown, unit: string | null | undefined, sqm?: un
   return { "@type": "QuantitativeValue", value, unitCode: code };
 }
 
-export function projectJsonLd(p: ProjectWithMarket) {
-  const url = absoluteSiteUrl(`/projects/${p.slug}`);
-  const price = positiveNumber(p.price);
+export function projectJsonLd(
+  p: ProjectWithMarket,
+  options: { canonical?: string | null; description?: string | null } = {},
+) {
+  const url = options.canonical ? absoluteSiteUrl(options.canonical) : absoluteSiteUrl(`/projects/${p.slug}`);
+  const price = confirmedProjectPrice(p);
   const availability = availabilityForProject(p.status, p.verificationCheckedAt);
   const image = [p.coverImage, ...(p.gallery ?? [])].filter((i): i is string => !!i).map(absoluteSiteUrl);
   const address = postalAddress(p);
@@ -145,7 +169,7 @@ export function projectJsonLd(p: ProjectWithMarket) {
     url,
     mainEntityOfPage: { "@type": "WebPage", "@id": `${url}#webpage` },
     name: p.name,
-    description: p.shortDescription || p.description || undefined,
+    description: options.description?.trim() || p.shortDescription || p.description || undefined,
     ...(image.length ? { image } : {}),
     ...(hasPropertyFacts ? { about: property } : {}),
     ...(price
@@ -164,22 +188,35 @@ export function projectJsonLd(p: ProjectWithMarket) {
   };
 }
 
-export function propertyJsonLd(p: PropertyWithMarket) {
-  const url = absoluteSiteUrl(`/properties/${p.slug}`);
+export function propertyJsonLd(
+  p: PropertyWithMarket,
+  options: { canonical?: string | null; description?: string | null } = {},
+) {
+  const url = options.canonical ? absoluteSiteUrl(options.canonical) : absoluteSiteUrl(`/properties/${p.slug}`);
   const price = positiveNumber(p.price);
   const image = [p.coverImage, ...(p.gallery ?? [])].filter((i): i is string => !!i).map(absoluteSiteUrl);
   const address = postalAddress(p);
-  const rooms = integerOrNull(p.bedrooms);
+  const bedrooms = integerOrNull(p.bedrooms);
   const size = floorSize(null, null, p.areaSqm);
+  const property = {
+    "@type": "Accommodation",
+    "@id": `${url}#property`,
+    name: p.title,
+    ...(address ? { address } : {}),
+    ...(bedrooms ? { numberOfBedrooms: bedrooms } : {}),
+    ...(size ? { floorSize: size } : {}),
+  };
+  const hasPropertyFacts = Boolean(address || bedrooms || size);
   return {
     "@context": "https://schema.org",
     "@type": "RealEstateListing",
     "@id": `${url}#listing`,
     url,
+    mainEntityOfPage: { "@type": "WebPage", "@id": `${url}#webpage` },
     name: p.title,
-    description: p.shortDescription || p.description || undefined,
+    description: options.description?.trim() || p.shortDescription || p.description || undefined,
     ...(image.length ? { image } : {}),
-    ...(address ? { address } : {}),
+    ...(hasPropertyFacts ? { about: property } : {}),
     ...(price
       ? {
           offers: {
@@ -190,15 +227,16 @@ export function propertyJsonLd(p: PropertyWithMarket) {
           },
         }
       : {}),
-    ...(rooms ? { numberOfRooms: rooms } : {}),
-    ...(size ? { floorSize: size } : {}),
     ...(p.updatedAt ? { dateModified: new Date(p.updatedAt).toISOString() } : {}),
     provider: { "@id": organizationId() },
   };
 }
 
-export function articleJsonLd(a: NewsArticleWithMarket) {
-  const url = absoluteSiteUrl(`/news/${a.slug}`);
+export function articleJsonLd(
+  a: NewsArticleWithMarket,
+  options: { canonical?: string | null; description?: string | null } = {},
+) {
+  const url = options.canonical ? absoluteSiteUrl(options.canonical) : absoluteSiteUrl(`/news/${a.slug}`);
   const image = a.socialImage || a.coverImage;
   const citations = (a.sources ?? []).map((s) => s.url).filter((u): u is string => !!u);
   return {
@@ -206,7 +244,7 @@ export function articleJsonLd(a: NewsArticleWithMarket) {
     "@type": "Article",
     "@id": `${url}#article`,
     headline: a.title,
-    description: a.excerpt || a.seoDescription || undefined,
+    description: options.description?.trim() || a.excerpt || a.seoDescription || undefined,
     ...(image ? { image: [absoluteSiteUrl(image)] } : {}),
     datePublished: (a.publishedAt || a.createdAt).toISOString(),
     dateModified: a.updatedAt.toISOString(),
@@ -214,7 +252,7 @@ export function articleJsonLd(a: NewsArticleWithMarket) {
       ? { author: { "@type": "Person", name: a.author, ...(a.authorRole ? { jobTitle: a.authorRole } : {}) } }
       : {}),
     publisher: { "@id": organizationId() },
-    mainEntityOfPage: { "@type": "WebPage", "@id": url },
+    mainEntityOfPage: { "@type": "WebPage", "@id": `${url}#webpage` },
     ...(a.category ? { articleSection: a.category } : {}),
     ...(a.seoKeywords ? { keywords: a.seoKeywords } : {}),
     ...(citations.length ? { citation: citations } : {}),
