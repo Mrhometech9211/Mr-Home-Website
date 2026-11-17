@@ -121,8 +121,23 @@ export function projectJsonLd(p: ProjectWithMarket) {
   const availability = availabilityForProject(p.status, p.verificationCheckedAt);
   const image = [p.coverImage, ...(p.gallery ?? [])].filter((i): i is string => !!i).map(absoluteSiteUrl);
   const address = postalAddress(p);
-  const rooms = integerOrNull(p.bedrooms);
+  const bedrooms = integerOrNull(p.bedrooms);
+  const bathrooms = integerOrNull(p.bathrooms);
   const size = floorSize(p.areaValue, p.areaUnit);
+  const geo = p.latitude != null && p.longitude != null
+    ? { "@type": "GeoCoordinates", latitude: p.latitude, longitude: p.longitude }
+    : undefined;
+  const property = {
+    "@type": "Accommodation",
+    "@id": `${url}#property`,
+    name: p.name,
+    ...(address ? { address } : {}),
+    ...(geo ? { geo } : {}),
+    ...(bedrooms ? { numberOfBedrooms: bedrooms } : {}),
+    ...(bathrooms ? { numberOfBathroomsTotal: bathrooms } : {}),
+    ...(size ? { floorSize: size } : {}),
+  };
+  const hasPropertyFacts = Boolean(address || geo || bedrooms || bathrooms || size);
   return {
     "@context": "https://schema.org",
     "@type": "RealEstateListing",
@@ -132,10 +147,7 @@ export function projectJsonLd(p: ProjectWithMarket) {
     name: p.name,
     description: p.shortDescription || p.description || undefined,
     ...(image.length ? { image } : {}),
-    ...(address ? { address } : {}),
-    ...(p.latitude != null && p.longitude != null
-      ? { geo: { "@type": "GeoCoordinates", latitude: p.latitude, longitude: p.longitude } }
-      : {}),
+    ...(hasPropertyFacts ? { about: property } : {}),
     ...(price
       ? {
           offers: {
@@ -147,8 +159,6 @@ export function projectJsonLd(p: ProjectWithMarket) {
           },
         }
       : {}),
-    ...(rooms ? { numberOfRooms: rooms } : {}),
-    ...(size ? { floorSize: size } : {}),
     ...(p.updatedAt ? { dateModified: new Date(p.updatedAt).toISOString() } : {}),
     provider: { "@id": organizationId() },
   };
